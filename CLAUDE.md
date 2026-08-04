@@ -2,119 +2,123 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What this is
+Nota: este proyecto está documentado en español. Mantén los comentarios,
+docstrings y documentación en español; los identificadores del código
+(nombres de funciones, clases y variables) están en inglés/híbrido y se
+mantienen así.
 
-A pipeline that builds a git history of Chilean law (Constitución + the 15
-official Códigos) sourced entirely from BCN's LeyChile public data — no
-LLMs, no manual transcription. This repo is **tooling only**. The output —
-`leyes/*.md` and the commit history that *is* their amendment history — is
-written into a separate sibling repo at `../leychile` (`DATA_REPO_ROOT` in
-`build_repo.py`), which must already exist and be a git repo (`git init`)
-before running the pipeline. Never look for law text or law commits in
-*this* repo.
+## Qué es esto
 
-## Commands
+Un pipeline que construye la historia git de la legislación chilena (la
+Constitución y los 15 Códigos oficiales) a partir de los datos públicos de
+LeyChile (BCN), sin LLMs ni transcripción manual.
+
+Este repositorio es **sólo la herramienta**. La salida —los `leyes/*.md` y su
+historia de commits— se escribe en un repositorio vecino, `../leychile`
+(`DATA_REPO_ROOT` en `build_repo.py`), que debe existir y ser un repositorio
+git (`git init`) antes de ejecutar el pipeline. Nunca busques el texto de las
+leyes ni sus commits en *este* repositorio.
+
+## Comandos
+
+Las dependencias se manejan con `uv`:
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -e .
+uv sync                                    # crea el entorno e instala dependencias
 
-# (re)build config/targets.yaml from BCN's canonical Código list + Constitution
-.venv/bin/python -m leyeschile.discover
+# (re)genera config/targets.yaml desde el catálogo oficial de BCN
+uv run python -m leyeschile.discover
 
-# build/continue the commit history in ../leychile - resumable, safe to
-# stop (Ctrl-C / kill) and re-run any time
-.venv/bin/python -m leyeschile.build_repo
+# construye o continúa la historia de commits en ../leychile
+# es reanudable: se puede cortar (Ctrl-C / kill) y relanzar
+uv run python -m leyeschile.build_repo
 
-# one-off endpoint probing/debugging against a known-good test norm
-# (Ley 19846, idNorma=206396) before trusting a new assumption about a
-# BCN response shape
-.venv/bin/python scripts/explore_api.py
+# sondear endpoints a mano contra una norma chica y conocida
+# (Ley 19.846, idNorma=206396) antes de confiar en un supuesto nuevo
+uv run python scripts/explore_api.py
 ```
 
-There is no test suite, linter, or build step beyond `pip install -e .`.
-There's no `main` script/CLI beyond the two modules above; poke at
-individual pipeline stages via `python -c` (see git history / prior debug
-sessions for the pattern: `sys.path.insert(0, 'src')`, instantiate
-`BcnClient`, call the function directly against a real cached or live URL).
+No hay suite de tests, linter ni build más allá de `uv sync`. Tampoco hay CLI
+más allá de esos dos módulos: para probar etapas sueltas del pipeline, usa
+`uv run python -c "..."` importando directamente la función y llamándola con
+una URL real (cacheada o en vivo).
 
-## Architecture
+## Arquitectura
 
-**Pipeline stages** (`src/leyeschile/`), each with a docstring detailing
-the exact BCN endpoint it hits and how that endpoint's behavior was
-verified against real data — read the module docstring before changing
-its parsing logic, since several of these were reverse-engineered from
-undocumented internal JSON services (not BCN's public PDF-documented API,
-which turned out not to support historical-version retrieval at all):
+**Etapas del pipeline** (`src/leyeschile/`). Cada módulo tiene un docstring que
+detalla el endpoint de BCN que usa y cómo se verificó su comportamiento contra
+datos reales. Lee ese docstring antes de tocar la lógica de parseo: varios de
+estos servicios se descubrieron por ingeniería inversa desde la web de
+LeyChile, no desde la documentación pública (que resultó no soportar la
+descarga de versiones históricas).
 
-1. `discover.py` — resolves `idNorma` for the Constitution + all 15
-   Códigos via BCN's `getCodigos` catalog (canonical, no guessing) and a
-   search fallback; writes `config/targets.yaml`.
-2. `versions.py` — `get_versiones` → the full amendment timeline for one
-   norm as a list of `VersionEvent`s (one per historical version window,
-   oldest first), each carrying the amending norm(s) that produced it.
-3. `norma_json.py` — `get_norma_json?idVersion=<date>` → the norm's actual
-   text as it read on that date, parsed from an HTML-fragment-in-JSON tree
-   into a `NormaDocument`.
-4. `render.py` — `NormaDocument` → Markdown with an audit front-matter
-   block (source URL, `idNorma`, version date, fetch timestamp) so every
-   generated file/commit is independently re-verifiable against BCN.
-5. `promulgacion.py` + `signers.py` — resolve a real git commit author:
-   named congressional authors (`get_autores_de_la_ley`, only populated
-   for laws that began as a parliamentary "moción") plus/else the
-   President-or-Junta and Minister who signed it into law, parsed straight
-   out of the norm's own Promulgación text (`promulgacion.py`). Both are
-   combined when available: one primary author, the rest as git
-   `Co-authored-by:` trailers (`Author.trailer()`).
-6. `build_repo.py` — the orchestrator. Merges every target's version
-   timeline into one global, date-sorted event list (so the resulting git
-   history is a true interleaved timeline across all documents, not
-   grouped per-document) and creates one commit per event in
-   `DATA_REPO_ROOT`.
-7. `client.py` — the shared HTTP layer everything above goes through:
-   disk-caches every response forever by URL under `cache/` (gitignored),
-   with backoff honoring `Retry-After` on 429/5xx. **Never bypass this
-   client with raw `requests` calls** — BCN rate-limits aggressively
-   (observed 429s after a handful of requests during development), and the
-   cache is also what makes rebuilds after a logic fix cheap (no
-   re-fetching, just re-parsing).
+1. `discover.py`: resuelve el `idNorma` de la Constitución y de los 15 Códigos
+   vía el catálogo `getCodigos` de BCN (autoritativo, sin adivinar) más una
+   búsqueda de texto libre como respaldo. Escribe `config/targets.yaml`.
+2. `versions.py`: `get_versiones` → la línea de tiempo completa de una norma
+   como lista de `VersionEvent` (una por ventana de vigencia, de la más antigua
+   a la más nueva), cada una con la(s) norma(s) que la produjeron.
+3. `norma_json.py`: `get_norma_json?idVersion=<fecha>` → el texto de la norma
+   tal como regía en esa fecha, parseado desde un árbol de fragmentos HTML
+   dentro de JSON hacia un `NormaDocument`.
+4. `render.py`: `NormaDocument` → Markdown con un bloque de front-matter de
+   auditoría (URL fuente, `idNorma`, fecha de versión, momento de descarga),
+   para que cada archivo y cada commit se pueda verificar contra BCN.
+5. `promulgacion.py` + `signers.py`: resuelven la autoría real del commit.
+   Parlamentarios autores (`get_autores_de_la_ley`, sólo poblado en leyes que
+   nacieron como moción) más/o el Presidente —o la Junta de Gobierno— y el
+   ministro que la firmaron, extraídos del texto de promulgación de la propia
+   norma. Cuando hay ambas fuentes se combinan: un autor principal y el resto
+   como líneas `Co-authored-by:` (`Author.trailer()`).
+6. `build_repo.py`: el orquestador. Mezcla las líneas de tiempo de todas las
+   normas en **una sola lista global ordenada por fecha** (así la historia git
+   queda como una cronología real entrelazada entre documentos, no agrupada
+   norma por norma) y crea un commit por evento en `DATA_REPO_ROOT`.
+7. `client.py`: la capa HTTP por la que pasa todo lo anterior. Cachea cada
+   respuesta en disco para siempre indexada por URL (`cache/`, ignorado por
+   git), con backoff que respeta `Retry-After` ante 429/5xx. **Nunca hagas
+   llamadas directas con `requests` saltándote este cliente**: BCN limita las
+   peticiones de forma agresiva (aparecieron 429 tras unas pocas peticiones
+   durante el desarrollo), y además la caché es lo que hace barato reconstruir
+   todo el repositorio después de corregir un bug de parseo (no se vuelve a
+   descargar nada, sólo se re-parsea).
 
-**Resumability**: `state.json` (gitignored, repo root) tracks which
-`"<id_norma>:<vigente_desde>"` events are already committed to
-`../leychile`. `build_repo.main()` skips those and retries anything that
-failed on a prior run. A single event's failure never aborts the run (see
-the try/except around `commit_event` in `main()`).
+**Reanudabilidad**: `state.json` (ignorado por git, en la raíz) registra qué
+eventos `"<id_norma>:<vigente_desde>"` ya están commiteados en `../leychile`.
+`build_repo.main()` los salta y reintenta los que fallaron en corridas
+anteriores. El fallo de un evento nunca aborta la corrida completa (ver el
+try/except alrededor de `commit_event` en `main()`).
 
-## Non-obvious BCN data gotchas
+## Trampas no obvias de los datos de BCN
 
-These were each discovered by hitting real inconsistencies mid-build, not
-from any documentation — if you touch `versions.py` or `build_repo.py`'s
-date handling, re-read this list:
+Cada una de éstas se descubrió chocando con inconsistencias reales a mitad de
+construcción, no leyendo documentación. Si vas a tocar `versions.py` o el
+manejo de fechas de `build_repo.py`, relee esta lista:
 
-- **git refuses commit dates before 1970-01-01** (verified directly
-  against git 2.50.1). Real amendments to Código Civil (1855), Código de
-  Comercio (1865), etc. predate this. Fix in place:
-  `assign_commit_datetimes()` clamps pre-1970 commits to
-  `1970-01-01T00:00:00Z` plus one second per such event in true
-  chronological order, so relative order survives in `git log` — the real
-  date always stays in the commit message and file front-matter.
-- **`Modificatorias` (the amending-norm data) is sometimes absent on a
-  non-original version window**, not just the true original — BCN has
-  real gaps in its own records scattered across every code's history.
-  Only `@tipoVersion == "Texto Original"` reliably identifies the true
-  original (`VersionEvent.is_original`); a window with no recorded cause
-  that *isn't* the original is `is_unknown_cause`, and gets an honest
-  "norma modificatoria no registrada por BCN" commit message instead of
-  being mislabeled as a second "original".
-- **`2222-02-02` is a literal BCN sentinel**, not a real date — it marks
-  "vigencia diferida por evento" (effective date depends on a future
-  regulation that hasn't been published yet). `versions.py` filters these
-  out entirely (`BCN_DEFERRED_EVENT_SENTINEL`). Don't confuse this with
-  genuine scheduled-future changes (`tipoVersion == "Con Vigencia
-  Diferida por Fecha"` with a real date like `2027-02-25`), which are real
-  and stay in the timeline.
-- The documented public endpoint (`leychile.cl/Consulta/obtxml`,
-  `fechaVersion` param) silently ignores the version-date parameter and
-  always returns current text — don't reach for it when adding
-  historical-version features. The undocumented `nuevo.leychile.cl`
-  JSON services in `versions.py`/`norma_json.py` are what actually work
-  and are what's in use.
+- **git rechaza fechas de commit anteriores al 1970-01-01** (verificado contra
+  git 2.50.1). Las modificaciones reales del Código Civil (1855), el Código de
+  Comercio (1865), etc. son anteriores. Solución ya implementada:
+  `assign_commit_datetimes()` fija esos commits en `1970-01-01T00:00:00Z` más
+  un segundo por cada evento, en orden cronológico real, para que el orden
+  relativo sobreviva en `git log`. La fecha real siempre queda en el mensaje
+  del commit y en el front-matter.
+- **El bloque `Modificatorias` a veces falta en ventanas que no son la
+  original**: BCN tiene huecos reales en sus propios registros, repartidos por
+  la historia de cada código. Sólo `@tipoVersion == "Texto Original"`
+  identifica de forma confiable la publicación original
+  (`VersionEvent.is_original`); una ventana sin causa registrada que *no* sea
+  la original es `is_unknown_cause`, y recibe un mensaje de commit honesto
+  ("norma modificatoria no registrada por BCN") en vez de quedar mal etiquetada
+  como una segunda "publicación original".
+- **`2222-02-02` es un centinela literal de BCN**, no una fecha real: marca
+  "vigencia diferida por evento" (la entrada en vigor depende de un reglamento
+  futuro que aún no se publica). `versions.py` los filtra por completo
+  (`BCN_DEFERRED_EVENT_SENTINEL`). No confundir con cambios futuros realmente
+  programados (`tipoVersion == "Con Vigencia Diferida por Fecha"` con fecha
+  real, como `2027-02-25`), que sí son reales y se conservan.
+- **El endpoint documentado ignora el parámetro de versión**: en
+  `leychile.cl/Consulta/obtxml`, `fechaVersion` se acepta pero no tiene ningún
+  efecto, y siempre devuelve el texto vigente. No recurras a él para funciones
+  de versiones históricas. Los servicios JSON no documentados de
+  `nuevo.leychile.cl` usados en `versions.py`/`norma_json.py` son los que sí
+  funcionan.

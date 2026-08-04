@@ -1,22 +1,28 @@
-"""Parse BCN's `get_norma_json` response into a clean, renderable document.
+"""Convierte la respuesta de `get_norma_json` (BCN) en un documento limpio.
 
-Confirmed live (2026-08-02) shape (idNorma=206396):
+Éste es el endpoint clave del proyecto: es el único que sí entrega el texto de
+una norma **tal como regía en una fecha pasada** (parámetro `idVersion`). No
+está documentado públicamente; se descubrió inspeccionando las peticiones de
+red de la propia web de LeyChile.
+
+Forma verificada en vivo (2026-08-02, idNorma=206396):
 
     {
-      "html": [ <block>, <block>, ... ],   # top-level sections, in order
+      "html": [ <bloque>, <bloque>, ... ],  # secciones de primer nivel, en orden
       "metadatos": { "titulo_norma": ..., "organismos": [...], ... },
-      "estructura": [ ... ],               # table of contents (unused here)
+      "estructura": [ ... ],                # índice de contenidos (no se usa acá)
       ...
     }
 
-A <block> is:
+Un <bloque> es:
 
-    {"t": "<div>...html fragment...</div>", "i": <internal id>, "h": [<block>, ...]}
+    {"t": "<div>...fragmento html...</div>", "i": <id interno>, "h": [<bloque>, ...]}
 
-`t` is an HTML fragment for that node's own text (e.g. a "Párrafo N" header,
-or an article's full body); `h`, when present, holds nested child blocks
-(a Párrafo's Artículos, etc.) — this mirrors the norm's real structural
-hierarchy (Título > Capítulo > Párrafo > Artículo).
+`t` es un fragmento HTML con el texto propio de ese nodo (p. ej. el
+encabezado "Párrafo N", o el cuerpo completo de un artículo). `h`, cuando
+existe, contiene los bloques hijos anidados (los Artículos de un Párrafo,
+etc.), reflejando la jerarquía real de la norma:
+Título > Capítulo > Párrafo > Artículo.
 """
 
 from __future__ import annotations
@@ -27,24 +33,27 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 
 BLOCK_TAGS = {"div", "p", "br", "li", "tr"}
-# HTML void elements: no closing tag, so they must never push onto the
-# depth stack (BCN content only uses <br>, but this is defensive).
+# Elementos HTML "void": no tienen etiqueta de cierre, así que nunca deben
+# sumar profundidad en la pila (el contenido de BCN sólo usa <br>, pero la
+# lista completa es por precaución). Contar mal la profundidad acá rompía el
+# descarte de notas al pie y se comía el resto del texto del artículo.
 VOID_TAGS = {"br", "hr", "img", "input", "meta", "link", "wbr", "area", "base", "col", "embed", "param", "source", "track"}
 
 
 class _TextExtractor(HTMLParser):
-    """Strip an HTML fragment down to plain text, keeping block-level tags
-    as paragraph breaks.
+    """Reduce un fragmento HTML a texto plano, usando las etiquetas de bloque
+    como saltos de párrafo.
 
-    BCN inlines footnote-style citations mid-sentence as
-    `<span class="n" id="n_X">LEY ... Art. ... D.O. ...</span>`, wrapping
-    the exact point a later amendment touched the text (sometimes with a
-    nested `<a>`). These are BCN UI annotations, not part of the legal
-    text itself (and its own commit already carries the same citation via
-    version metadata), so their content is dropped rather than spliced in
-    -- otherwise it corrupts the surrounding sentence (no space is present
-    on the *entering* side, e.g. "Las<span>...</span> producciones" would
-    render as "LasLEY 20756... producciones" if inlined).
+    BCN intercala citas al pie *dentro* de las frases, con la forma
+    `<span class="n" id="n_X">LEY ... Art. ... D.O. ...</span>` (a veces con un
+    `<a>` anidado), marcando el punto exacto que tocó una modificación
+    posterior. Son anotaciones de la interfaz de BCN, no parte del texto legal
+    —y además el commit correspondiente ya lleva esa misma cita en sus
+    metadatos—, así que su contenido se descarta en vez de insertarse.
+
+    Si se insertara, corrompería la frase que lo rodea: no hay espacio del lado
+    de *entrada*, por lo que "Las<span>...</span> producciones" quedaría como
+    "LasLEY 20756... producciones".
     """
 
     def __init__(self) -> None:
@@ -70,7 +79,7 @@ class _TextExtractor(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if tag in VOID_TAGS:
-            return  # no depth was pushed for these; parsers shouldn't call this anyway
+            return  # no sumaron profundidad; el parser no debería llamar acá igual
         if self._suppress_depth is not None:
             if self._depth == self._suppress_depth:
                 self._suppress_depth = None
@@ -98,6 +107,8 @@ def html_fragment_to_text(fragment: str) -> str:
 
 @dataclass
 class Block:
+    """Nodo de la norma: un agrupador (con hijos) o un artículo (hoja)."""
+
     text: str
     children: list["Block"]
 
@@ -108,13 +119,15 @@ class Block:
 
 @dataclass
 class NormaDocument:
+    """Una norma completa en una fecha determinada, lista para renderizar."""
+
     id_norma: int
     version_date: str
     titulo_norma: str
     organismos: list[str]
     fecha_publicacion: str
     blocks: list[Block]
-    compuesto: str = ""  # e.g. "LEY-19846", from metadatos.tipos_numeros
+    compuesto: str = ""  # p. ej. "LEY-19846", desde metadatos.tipos_numeros
 
 
 def _parse_block(raw: dict) -> Block:

@@ -1,10 +1,20 @@
-"""HTTP client for BCN's LeyChile services.
+"""Cliente HTTP para los servicios de LeyChile (BCN).
 
-BCN rate-limits aggressively (observed HTTP 429 with `Retry-After` after a
-handful of requests). This client is deliberately conservative: every
-response is cached to disk forever (raw bytes + fetch metadata), and a
-minimum delay is enforced between *actual* network requests so re-runs of
-the pipeline never re-hit URLs already fetched.
+BCN limita las peticiones de forma agresiva: durante el desarrollo bastaron
+unas pocas peticiones seguidas para recibir `HTTP 429` con `Retry-After: 300`.
+Por eso este cliente es deliberadamente conservador:
+
+- **Todo se cachea en disco para siempre**, indexado por URL (bytes crudos +
+  metadatos de la descarga). Reejecutar el pipeline nunca vuelve a pedir una
+  URL ya descargada, así que corregir un bug de parseo y reconstruir el
+  repositorio completo no cuesta ni una sola petición nueva.
+- Se respeta un **retardo mínimo entre peticiones reales** a la red (las
+  respuestas servidas desde caché no cuentan).
+- Ante 429 o errores 5xx se reintenta con backoff exponencial, respetando la
+  cabecera `Retry-After` cuando viene.
+
+Todo el pipeline debe pasar por esta clase: no hacer llamadas directas con
+`requests` en otros módulos (ver CLAUDE.md).
 """
 
 from __future__ import annotations
@@ -29,10 +39,12 @@ MAX_RETRIES = 6
 
 @dataclass(frozen=True)
 class FetchResult:
+    """Respuesta de BCN, venga de la red o de la caché en disco."""
+
     url: str
     content: bytes
     status_code: int
-    fetched_at: str  # ISO 8601 UTC timestamp of the actual HTTP request
+    fetched_at: str  # marca de tiempo ISO 8601 UTC de la petición HTTP real
     from_cache: bool
 
     def text(self, encoding: str = "utf-8") -> str:
@@ -54,6 +66,7 @@ class BcnClient:
         self._session.headers.update({"User-Agent": user_agent, "Accept": "*/*"})
 
     def _cache_paths(self, url: str) -> tuple[Path, Path]:
+        """Rutas (cuerpo, metadatos) de una URL, indexadas por su hash."""
         digest = hashlib.sha256(url.encode("utf-8")).hexdigest()
         return self.cache_dir / f"{digest}.body", self.cache_dir / f"{digest}.meta.json"
 
@@ -82,6 +95,7 @@ class BcnClient:
         )
 
     def _throttle(self) -> None:
+        """Duerme lo necesario para respetar el retardo mínimo entre peticiones."""
         if self._last_request_ts is None:
             return
         elapsed = time.monotonic() - self._last_request_ts
@@ -90,10 +104,10 @@ class BcnClient:
             time.sleep(remaining)
 
     def get(self, url: str, *, force_refresh: bool = False) -> FetchResult:
-        """Fetch a URL, transparently using the on-disk cache.
+        """Descarga una URL usando la caché en disco de forma transparente.
 
-        Raises requests.HTTPError if the final response (after retries) is
-        not successful.
+        Lanza `requests.HTTPError` si la respuesta final (tras los reintentos)
+        no es exitosa, y `RuntimeError` si se agotan los reintentos.
         """
         if not force_refresh:
             cached = self._read_cache(url)
@@ -116,6 +130,9 @@ class BcnClient:
                 continue
 
             if resp.status_code == 429:
+                # BCN suele responder con Retry-After: 300. Respetarlo es más
+                # rápido que insistir con nuestro propio backoff, y evita que
+                # nos limiten todavía más.
                 retry_after = resp.headers.get("Retry-After")
                 wait = float(retry_after) if retry_after and retry_after.isdigit() else backoff
                 logger.warning(
@@ -134,6 +151,8 @@ class BcnClient:
                 backoff *= 2
                 continue
 
+            # Se cachea incluso un 4xx: si BCN responde "no existe", volver a
+            # preguntar mañana tampoco va a cambiar la respuesta.
             self._write_cache(url, resp.content, resp.status_code, fetched_at)
             result = FetchResult(
                 url=url,

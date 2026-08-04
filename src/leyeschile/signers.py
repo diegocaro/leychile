@@ -1,26 +1,28 @@
-"""Resolve git commit authorship for an amendment event.
+"""Determina la autoría del commit git de cada modificación.
 
-Two independent real data sources are combined, per project decision, so
-both "who wrote it" and "who signed it into law" are credited when available:
+Se combinan dos fuentes de datos reales e independientes, para acreditar tanto
+a "quien la escribió" como a "quien la firmó", cuando ambos datos existen:
 
-- `get_autores_de_la_ley?idNorma=<id>` (confirmed live 2026-08-02): JSON list
-  of named congressional authors, populated only for norms that began as a
-  parliamentary "moción" (e.g. idNorma=1063104 / Ley 20.756 -> 10 named
-  deputies). Empty for presidential-message bills.
-- Promulgación signers (promulgacion.py), parsed from the norm's own
-  rendered text: the President/Junta member and a Minister who actually
-  signed it into law. Almost always present, unlike get_autores_de_la_ley.
+- `get_autores_de_la_ley?idNorma=<id>` (verificado en vivo el 2026-08-02):
+  lista JSON de parlamentarios autores. Sólo viene poblada en normas que
+  nacieron como moción parlamentaria (p. ej. idNorma=1063104 / Ley 20.756 ->
+  10 diputados con nombre). Viene vacía en los proyectos de iniciativa
+  presidencial (mensajes).
+- Firmantes de la promulgación (`promulgacion.py`), extraídos del propio texto
+  de la norma: el Presidente (o miembro de la Junta de Gobierno) y el ministro
+  que la firmaron. A diferencia del endpoint anterior, casi siempre están.
 
-Priority: named congressional author (if any) is the primary git author,
-since "who wrote this" is the more specific credit; the promulgación
-signer(s) are added as `Co-authored-by:` trailers. If there are no named
-congressional authors, the promulgación primary signer (President/Junta)
-becomes the primary author instead, with the Minister as co-author. If
-neither source has data, falls back to the issuing `organismo`.
+Prioridad: si hay parlamentarios autores, el primero es el autor principal del
+commit, porque "quién la escribió" es el crédito más específico; los firmantes
+de la promulgación se agregan como líneas `Co-authored-by:`. Si no hay autores
+con nombre, el firmante principal de la promulgación (Presidente/Junta) pasa a
+ser el autor principal y el ministro queda como coautor. Si ninguna fuente
+tiene datos, se cae al `organismo` emisor.
 
-Git commit authors need a "Name <email>" pair. There's no real public email
-for historical legislators/officials, so a clearly-synthetic placeholder
-address is used — the point is attribution/audit, not a working mailbox.
+Git exige un par "Nombre <email>" para el autor. No existe un correo público
+real para legisladores y autoridades históricas, así que se usa una dirección
+claramente sintética: el objetivo es la atribución y la auditoría, no tener un
+buzón que funcione.
 """
 
 from __future__ import annotations
@@ -36,7 +38,7 @@ from .promulgacion import Signer, extract_signers, minister_signer, primary_sign
 GET_AUTORES_URL_TEMPLATE = "https://nuevo.leychile.cl/servicios/Navegar/get_autores_de_la_ley?idNorma={id_norma}"
 
 PLACEHOLDER_EMAIL_DOMAIN = "sourced-from-bcn.leychile.invalid"
-MAX_NAMED_CO_AUTHORS = 6  # some mociones have a dozen+ named authors; cap the trailer list
+MAX_NAMED_CO_AUTHORS = 6  # hay mociones con más de una docena de autores; limitamos la lista
 
 
 @dataclass(frozen=True)
@@ -45,11 +47,15 @@ class Author:
     email: str
 
     def trailer(self) -> str:
+        """Línea `Co-authored-by:`, el formato que GitHub reconoce para
+        mostrar varios autores en un mismo commit."""
         return f"Co-authored-by: {self.name} <{self.email}>"
 
 
 @dataclass(frozen=True)
 class ResolvedAuthors:
+    """Autor principal del commit más sus coautores."""
+
     primary: Author
     co_authors: list[Author] = field(default_factory=list)
 
@@ -65,9 +71,10 @@ def _author_from_name(name: str) -> Author:
 
 
 def _author_from_signer(signer: Signer) -> Author:
-    # Junta/president signatures are often printed all-caps; title-case for
-    # a normal-looking git author name. Only affects Author.name here, not
-    # the Signer.role text used elsewhere (e.g. commit messages).
+    # Las firmas del Presidente y de la Junta suelen venir en mayúsculas; las
+    # pasamos a formato título para que el nombre del autor se vea normal en
+    # git. Sólo afecta a Author.name, no al texto de Signer.role que se usa en
+    # otras partes (p. ej. en los mensajes de commit).
     name = signer.name.title() if signer.name.isupper() else signer.name
     return _author_from_name(name)
 
@@ -80,10 +87,10 @@ def fetch_named_authors(client: BcnClient, id_norma: int) -> list[str]:
 
 
 def organismo_only_authors(organismo: str) -> ResolvedAuthors:
-    """For version transitions where BCN doesn't record which norm caused
-    them (see versions.VersionEvent.is_unknown_cause) - no id_norma exists
-    to look up named authors or a promulgación signer for, so this skips
-    straight to the organismo fallback."""
+    """Para las transiciones donde BCN no registra qué norma las causó (ver
+    `versions.VersionEvent.is_unknown_cause`): no hay ningún id_norma que
+    consultar para obtener autores ni firmantes, así que se va directo al
+    respaldo por organismo."""
     organismo_clean = organismo.strip() or "Congreso Nacional de Chile"
     return ResolvedAuthors(primary=_author_from_name(organismo_clean.title()))
 
@@ -91,6 +98,7 @@ def organismo_only_authors(organismo: str) -> ResolvedAuthors:
 def resolve_authors(
     client: BcnClient, *, id_norma: int, organismo: str, promulgacion_doc: NormaDocument | None
 ) -> ResolvedAuthors:
+    """Autoría del commit según la prioridad descrita en el docstring del módulo."""
     named = fetch_named_authors(client, id_norma)
     signers = extract_signers(promulgacion_doc) if promulgacion_doc is not None else []
     pres = primary_signer(signers)

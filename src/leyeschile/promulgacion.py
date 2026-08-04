@@ -1,8 +1,8 @@
-"""Extract real signer names from a norm's Promulgación text.
+"""Extrae los nombres de quienes firmaron una norma, desde su Promulgación.
 
-Every norm's rendered text (already fetched for content) includes a
-Promulgación block naming who actually signed it into law — e.g. Código
-Aeronáutico's ends with:
+El texto de toda norma (que igual descargamos por su contenido) incluye un
+bloque de Promulgación con las firmas reales. Por ejemplo, el Código
+Aeronáutico termina así:
 
     JOSE T. MERINO CASTRO, Almirante, ... Miembro de la Junta de Gobierno.-
     ...
@@ -11,12 +11,14 @@ Aeronáutico's ends with:
     de Justicia.
     Lo que transcribo a Ud. para su conocimiento.- ... Subsecretario ...
 
-This is real, almost-universally-present data that `get_autores_de_la_ley`
-doesn't cover (that endpoint only has named authors for laws that began as
-a parliamentary "moción"). Best-effort text parsing: BCN separates
-signatures with ".-", but capitalization is inconsistent (President/Junta
-signatures are often all-caps, Ministers often title-case), so matching is
-permissive on name casing and keys off role keywords instead.
+Este dato es real y está presente en casi todas las normas, a diferencia de
+`get_autores_de_la_ley`, que sólo trae autores con nombre para las leyes que
+nacieron como moción parlamentaria.
+
+El parseo es "lo mejor posible": BCN separa las firmas con ".-", pero la
+capitalización es inconsistente (las firmas del Presidente y de la Junta suelen
+ir en mayúsculas, las de los ministros en formato título). Por eso el criterio
+no se basa en cómo está escrito el nombre, sino en las palabras clave del cargo.
 """
 
 from __future__ import annotations
@@ -44,14 +46,16 @@ ROLE_MAX_LEN = 100
 
 @dataclass(frozen=True)
 class Signer:
+    """Una firma de la promulgación: nombre y cargo."""
+
     name: str
     role: str
 
 
 def _find_promulgacion_block(blocks: list[Block]) -> Block | None:
-    # Promulgación is always near the end (right before any Anexos), and the
-    # strong markers below only otherwise risk matching Encabezado
-    # boilerplate for junta-era laws — searching from the end avoids that.
+    # La Promulgación siempre está cerca del final (justo antes de los Anexos).
+    # Buscamos desde el final porque, en las normas de la época de la Junta, el
+    # Encabezado contiene frases parecidas que pueden confundirse con firmas.
     for block in reversed(blocks):
         if block.text and PROMULGACION_MARKER_RE.search(block.text):
             return block
@@ -59,6 +63,7 @@ def _find_promulgacion_block(blocks: list[Block]) -> Block | None:
 
 
 def extract_signers(doc: NormaDocument) -> list[Signer]:
+    """Devuelve todas las firmas encontradas en la promulgación de la norma."""
     block = _find_promulgacion_block(doc.blocks)
     if block is None:
         return []
@@ -69,15 +74,15 @@ def extract_signers(doc: NormaDocument) -> list[Signer]:
 
     signers: list[Signer] = []
     for segment in text.split(".-"):
-        segment = " ".join(segment.split())  # collapse newlines/whitespace
+        segment = " ".join(segment.split())  # colapsa saltos de línea y espacios
         match = SIGNER_SEGMENT_RE.match(segment)
         if not match:
             continue
         name, role = match.group(1).strip(), match.group(2).strip().rstrip(".")
         if len(role) > ROLE_MAX_LEN:
-            # A missing ".-" delimiter before trailing boilerplate prose can
-            # pull an entire extra sentence into the role; cut at the first
-            # sentence boundary as a sane fallback.
+            # Si falta el separador ".-" antes del texto de cierre, el cargo se
+            # puede llevar una frase entera de más. Cortamos en el primer punto
+            # como salida razonable.
             cut_at = role.find(". ")
             role = role[:cut_at] if 0 < cut_at <= ROLE_MAX_LEN else role[:ROLE_MAX_LEN]
         signers.append(Signer(name=name, role=role))
@@ -85,6 +90,8 @@ def extract_signers(doc: NormaDocument) -> list[Signer]:
 
 
 def primary_signer(signers: list[Signer]) -> Signer | None:
+    """La firma principal: Presidente de la República, o en su defecto un
+    miembro de la Junta de Gobierno (normas de 1973-1990)."""
     for s in signers:
         if PRESIDENT_ROLE_RE.search(s.role):
             return s
@@ -95,6 +102,8 @@ def primary_signer(signers: list[Signer]) -> Signer | None:
 
 
 def minister_signer(signers: list[Signer], *, exclude: Signer | None = None) -> Signer | None:
+    """El ministro o ministra que firmó, excluyendo subsecretarios (que suelen
+    aparecer sólo en la frase final de transcripción)."""
     for s in signers:
         if s is exclude:
             continue

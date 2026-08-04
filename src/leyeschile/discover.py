@@ -1,18 +1,21 @@
-"""Resolve idNorma for the Constitution + major Codes corpus.
+"""Resuelve el idNorma de la Constitución y de los Códigos.
 
-Two BCN endpoints confirmed live (2026-08-02), both discovered by driving a
-real browser to leychile.cl and inspecting its network calls:
+Dos endpoints de BCN, ambos verificados en vivo (2026-08-02) y descubiertos
+inspeccionando las peticiones de red de leychile.cl en un navegador real:
 
-- `getCodigos` — BCN's own curated list of the 15 official Chilean Códigos,
-  each with a confirmed idNorma. This is authoritative; no guessing needed.
-- `buscarjson?cadena=<query>` — free-text search, used to resolve anything
-  not in `getCodigos` (the Constitution isn't a "Código" so it's absent from
-  that list). Verified against "Constitución Política de la República":
-  idNorma=242302, "Decreto 100 - FIJA EL TEXTO REFUNDIDO, COORDINADO Y
-  SISTEMATIZADO DE LA CONSTITUCION POLITICA DE LA REPUBLICA DE CHILE" — this
-  is the up-to-date consolidated text (BCN's standard pattern: the "texto
-  refundido" decree is the living document, same as e.g. Código Civil being
-  "contenido en el DFL 1 ... que fija su texto refundido").
+- `getCodigos`: el listado curado por la propia BCN con los 15 Códigos
+  oficiales chilenos, cada uno con su idNorma. Es la fuente autoritativa, así
+  que no hace falta adivinar ningún número.
+- `buscarjson?cadena=<consulta>`: búsqueda de texto libre, para resolver lo que
+  no esté en `getCodigos`. La Constitución no es un "Código", así que no
+  aparece en ese listado. Verificado con "Constitución Política de la
+  República": idNorma=242302, "Decreto 100 - FIJA EL TEXTO REFUNDIDO,
+  COORDINADO Y SISTEMATIZADO DE LA CONSTITUCION POLITICA DE LA REPUBLICA DE
+  CHILE".
+
+Ese decreto es el texto consolidado y vigente. Es el patrón habitual de BCN: el
+decreto que "fija el texto refundido" es el documento vivo, igual que el Código
+Civil, que está "contenido en el DFL 1 ... que fija su texto refundido".
 """
 
 from __future__ import annotations
@@ -28,21 +31,25 @@ from .client import BcnClient
 GET_CODIGOS_URL = "https://nuevo.leychile.cl/servicios/Consulta/getCodigos"
 BUSCAR_URL_TEMPLATE = "https://nuevo.leychile.cl/servicios/buscarjson?cadena={query}&itemsporpagina={n}&npagina=1"
 
-# The Constitution isn't returned by getCodigos (it's not a "Código"), so
-# it's resolved separately and pinned here once confirmed live - see
-# module docstring for how this was verified.
+# getCodigos no devuelve la Constitución (no es un "Código"), así que se
+# resolvió aparte y queda fijada acá una vez verificada en vivo. Ver el
+# docstring del módulo para el detalle de cómo se comprobó.
 CONSTITUCION_ID_NORMA = 242302
 CONSTITUCION_TITULO = "Constitución Política de la República de Chile"
 
 
 @dataclass(frozen=True)
 class DiscoveredTarget:
+    """Documento a seguir: su nombre de archivo, su idNorma y su título."""
+
     slug: str
     id_norma: int
     titulo: str
 
 
 def _slugify(text: str) -> str:
+    """Convierte un título en nombre de archivo: sin tildes, en minúsculas y
+    con guiones (p. ej. "Código Civil" -> "codigo-civil")."""
     normalized = unicodedata.normalize("NFKD", text.lower())
     ascii_text = "".join(c for c in normalized if (c.isalnum() and ord(c) < 128) or c in " -")
     ascii_text = re.sub(r"\s+", "-", ascii_text.strip())
@@ -50,6 +57,7 @@ def _slugify(text: str) -> str:
 
 
 def fetch_codigos(client: BcnClient) -> list[DiscoveredTarget]:
+    """Los 15 Códigos oficiales, según el catálogo propio de BCN."""
     result = client.get(GET_CODIGOS_URL)
     data = json.loads(result.text())
     targets = []
@@ -62,8 +70,9 @@ def fetch_codigos(client: BcnClient) -> list[DiscoveredTarget]:
 
 
 def search_norma(client: BcnClient, query: str, *, limit: int = 10) -> list[dict]:
-    """Free-text search; returns raw result dicts (IDNORMA, NORMA,
-    TITULO_NORMA, ...) for manual inspection/disambiguation."""
+    """Búsqueda de texto libre. Devuelve los diccionarios crudos del resultado
+    (IDNORMA, NORMA, TITULO_NORMA, ...) para inspeccionarlos y desambiguar a
+    mano; es la herramienta para agregar normas nuevas a `targets.yaml`."""
     url = BUSCAR_URL_TEMPLATE.format(query=urllib.parse.quote(query), n=limit)
     result = client.get(url)
     data = json.loads(result.text())
@@ -71,7 +80,7 @@ def search_norma(client: BcnClient, query: str, *, limit: int = 10) -> list[dict
 
 
 def build_target_list(client: BcnClient) -> list[DiscoveredTarget]:
-    """Constitution + every official Código."""
+    """El corpus completo: la Constitución más todos los Códigos oficiales."""
     targets = [DiscoveredTarget(slug=_slugify(CONSTITUCION_TITULO), id_norma=CONSTITUCION_ID_NORMA, titulo=CONSTITUCION_TITULO)]
     targets.extend(fetch_codigos(client))
     return targets
@@ -86,7 +95,7 @@ def main() -> None:
     targets = build_target_list(client)
     raw = [{"slug": t.slug, "id_norma": t.id_norma, "note": t.titulo} for t in targets]
     TARGETS_FILE.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False))
-    print(f"Wrote {len(targets)} targets to {TARGETS_FILE}")
+    print(f"Se escribieron {len(targets)} normas en {TARGETS_FILE}")
 
 
 if __name__ == "__main__":

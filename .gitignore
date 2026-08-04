@@ -1,6 +1,12 @@
+# Caché de respuestas HTTP de BCN: se regenera sola, pero conviene no borrarla
+# (reconstruir el repositorio de leyes desde caché no cuesta ni una petición).
 cache/
+
+# Punto de control para reanudar la construcción.
 state.json
 build_repo.log
+
+# Entorno y artefactos de Python (uv.lock SÍ se versiona).
 __pycache__/
 *.pyc
 .venv/

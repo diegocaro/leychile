@@ -1,5 +1,10 @@
-"""Render a parsed NormaDocument to Markdown, with an audit front-matter
-block so every file states exactly which BCN URL produced it and when."""
+"""Convierte un `NormaDocument` ya parseado en Markdown.
+
+Cada archivo generado lleva al inicio un bloque de front-matter de auditoría
+que declara exactamente qué URL de BCN lo produjo y cuándo se descargó, para
+que cualquier persona pueda volver a pedir esa misma URL y verificar el
+contenido de forma independiente.
+"""
 
 from __future__ import annotations
 
@@ -11,6 +16,8 @@ MAX_HEADING_DEPTH = 6
 
 
 def _render_block(block: Block, depth: int) -> list[str]:
+    """Renderiza un nodo y sus hijos. Los agrupadores (los que tienen hijos)
+    quedan como encabezados Markdown; los artículos, como texto plano."""
     lines: list[str] = []
     if block.text:
         if block.children:
@@ -30,6 +37,7 @@ def render_markdown(
     source_url: str,
     fetched_at: str | None = None,
 ) -> str:
+    """Documento completo en Markdown, con el front-matter de auditoría."""
     fetched_at = fetched_at or datetime.now(timezone.utc).isoformat()
     front_matter = [
         "---",

@@ -1,7 +1,11 @@
-"""Discover the amendment timeline of a norm via BCN's (undocumented, but
-public — the LeyChile web app itself calls it) `get_versiones` service.
+"""Línea de tiempo de modificaciones de una norma, vía el servicio
+`get_versiones` de BCN.
 
-Confirmed live (2026-08-02) against idNorma=206396 (Ley 19846). Shape:
+Este endpoint no está documentado públicamente, pero sí es público: es el que
+llama la propia aplicación web de LeyChile (se descubrió abriendo leychile.cl
+en un navegador real e inspeccionando sus peticiones de red).
+
+Verificado en vivo (2026-08-02) contra idNorma=206396 (Ley 19.846). Forma:
 
     {
       "Versiones": {
@@ -10,9 +14,9 @@ Confirmed live (2026-08-02) against idNorma=206396 (Ley 19846). Shape:
           {
             "@tipoVersion": "Última Versión" | "Intermedio" | "Texto Original",
             "@vigenteDesde": "2022-12-30",
-            "@vigenteHasta": "2022-12-29",   # absent on the newest entry
+            "@vigenteHasta": "2022-12-29",   # ausente en la entrada más nueva
             "UrlVersion": {"$": "https://www.leychile.cl/N?i=206396&f=2022-12-30"},
-            "Modificatorias": {              # absent on the newest entry
+            "Modificatorias": {              # ausente en la entrada más nueva
               "Modificatoria": { ... } | [ { ... }, { ... } ]
             }
           },
@@ -21,12 +25,17 @@ Confirmed live (2026-08-02) against idNorma=206396 (Ley 19846). Shape:
       }
     }
 
-`Version` entries are windows of validity. Each window's `Modificatorias`
-describes the amending norm(s) that ENDED that window (i.e. whose
-`inicioVigencia` equals the *next* window's `vigenteDesde`) — so to build a
-commit for version window N, look at window N-1's `Modificatorias`. The
-oldest window ("Texto Original") has no predecessor: it's the norm's
-original publication, with no amending norm.
+Cada entrada de `Version` es una **ventana de vigencia**. El bloque
+`Modificatorias` de una ventana describe la(s) norma(s) que la **terminaron**
+(es decir, aquellas cuyo `inicioVigencia` coincide con el `vigenteDesde` de la
+ventana *siguiente*). Por eso, para construir el commit de la ventana N hay que
+mirar las `Modificatorias` de la ventana N-1. La ventana más antigua ("Texto
+Original") no tiene predecesora: es la publicación original de la norma, sin
+norma modificatoria.
+
+Advertencia importante: `Modificatorias` también falta a veces en ventanas que
+NO son la original, simplemente porque BCN no tiene registrada la norma que
+causó ese cambio. Ver `VersionEvent.is_original` / `is_unknown_cause`.
 """
 
 from __future__ import annotations
@@ -42,23 +51,28 @@ GET_VERSIONES_URL_TEMPLATE = (
     "?idNorma={id_norma}&formato=json&idParte=&idsParte="
 )
 
-# BCN's literal sentinel for "vigencia diferida por evento": an amendment
-# whose effective date depends on a future regulation/event that hasn't
-# happened yet, so BCN has no real date to give and uses this placeholder
-# instead (confirmed live e.g. for Código de Aguas, idNorma=5605:
+# Valor centinela literal que usa BCN para "vigencia diferida por evento": una
+# modificación cuya entrada en vigor depende de un reglamento o evento futuro
+# que todavía no ocurre, así que BCN no tiene una fecha real que entregar y
+# pone este marcador (verificado en vivo, p. ej. Código de Aguas, idNorma=5605:
 # tipoVersion="Con Vigencia Diferida por Evento", vigenteDesde="2222-02-02",
-# no Modificatorias). This is distinct from a genuine *scheduled* future
-# change (tipoVersion="Con Vigencia Diferida por Fecha" with a real date,
-# e.g. "2027-02-25") which IS real and stays in the timeline. Also: git
-# itself rejects this date outright ("fatal: invalid date format") so it
-# couldn't become a commit even if it were meaningful to try.
+# sin Modificatorias).
+#
+# Es distinto de un cambio futuro *realmente programado*
+# (tipoVersion="Con Vigencia Diferida por Fecha" con fecha real, p. ej.
+# "2027-02-25"), que sí es real y se conserva en la línea de tiempo.
+#
+# Además, git rechaza esta fecha de plano ("fatal: invalid date format"), así
+# que no podría convertirse en un commit aunque tuviera sentido intentarlo.
 BCN_DEFERRED_EVENT_SENTINEL = date(2222, 2, 2)
 
 
 @dataclass(frozen=True)
 class Modificatoria:
+    """Norma que modificó a otra, tal como la registra BCN."""
+
     id_norma: int
-    nro_norma: str  # usually digits, but can be "S/N" for old un-numbered decrees
+    nro_norma: str  # normalmente dígitos, pero puede ser "S/N" en decretos antiguos sin número
     tipo_norma: str
     titulo: str
     organismo: str
@@ -68,17 +82,21 @@ class Modificatoria:
 
 @dataclass(frozen=True)
 class VersionEvent:
-    """One commit's worth of state: the norm's text as of `vigente_desde`.
+    """Un commit: el texto de la norma tal como regía desde `vigente_desde`.
 
-    `modificatorias` is the amending norm(s) that produced this version -
-    empty either for the true original publication (`is_original`) or for
-    an "unknown cause" gap (`is_unknown_cause`): BCN's own get_versiones
-    data has real gaps scattered throughout every norm's history (verified
-    live e.g. for Código de Comercio: entries at 1865-11-24, 2001-09-27,
-    2005-11-24, 2021-04-13 all lack a recorded Modificatorias block despite
-    not being the original). Only BCN's own `@tipoVersion == "Texto
-    Original"` flag reliably identifies the true original - inferring it
-    from "no modificatorias" produces false positives on every such gap.
+    `modificatorias` contiene la(s) norma(s) que produjeron esta versión. Puede
+    venir vacío por dos razones muy distintas:
+
+    - `is_original`: es la publicación original, no la modificó nadie.
+    - `is_unknown_cause`: BCN no tiene registrada la norma causante. Estos
+      huecos aparecen repartidos por toda la historia de cada código
+      (verificado en vivo, p. ej. Código de Comercio: las entradas de
+      1865-11-24, 2001-09-27, 2005-11-24 y 2021-04-13 no traen bloque
+      Modificatorias pese a no ser la original).
+
+    Por eso sólo la marca `@tipoVersion == "Texto Original"` de BCN identifica
+    de forma confiable la publicación original: deducirla de "no tiene
+    modificatorias" produce falsos positivos en cada uno de esos huecos.
     """
 
     vigente_desde: date
@@ -103,9 +121,12 @@ _SPANISH_MONTHS = {
 
 
 def _parse_bcn_date(value: str) -> date:
-    # get_versiones uses ISO (YYYY-MM-DD) for @vigenteDesde/@vigenteHasta/
-    # @inicioVigencia, but "DD-MMM-YYYY" Spanish abbreviations (e.g.
-    # "30-DIC-2022") for @fechaPublicacion. Handle both.
+    """Acepta los dos formatos de fecha que mezcla `get_versiones`.
+
+    ISO (`YYYY-MM-DD`) en @vigenteDesde/@vigenteHasta/@inicioVigencia, pero
+    `DD-MMM-YYYY` con mes abreviado en español (p. ej. "30-DIC-2022") en
+    @fechaPublicacion.
+    """
     if "-" in value and value[:4].isdigit():
         return date.fromisoformat(value)
     day_str, month_str, year_str = value.split("-")
@@ -125,6 +146,7 @@ def _parse_modificatoria(raw: dict) -> Modificatoria:
 
 
 def _extract_modificatorias(version_raw: dict) -> tuple[Modificatoria, ...]:
+    """`Modificatoria` viene como dict si es una sola, y como lista si son varias."""
     block = version_raw.get("Modificatorias")
     if not block:
         return ()
@@ -135,9 +157,9 @@ def _extract_modificatorias(version_raw: dict) -> tuple[Modificatoria, ...]:
 
 
 def fetch_version_timeline(client: BcnClient, id_norma: int) -> list[VersionEvent]:
-    """Return every historical version window for `id_norma`, oldest first,
-    each carrying the amending norm(s) that produced it (empty for the
-    original publication)."""
+    """Devuelve todas las ventanas de vigencia de `id_norma`, de la más antigua
+    a la más nueva, cada una con la(s) norma(s) que la produjeron (vacío en la
+    publicación original)."""
     url = GET_VERSIONES_URL_TEMPLATE.format(id_norma=id_norma)
     result = client.get(url)
     data = json.loads(result.text())
@@ -145,9 +167,10 @@ def fetch_version_timeline(client: BcnClient, id_norma: int) -> list[VersionEven
     if isinstance(raw_versions, dict):
         raw_versions = [raw_versions]
 
-    # BCN lists these newest-first; each window's Modificatorias describes
-    # what ENDED it, i.e. what produced the *next* (newer) window. Shift
-    # accordingly so each VersionEvent carries the change that produced it.
+    # BCN las entrega de la más nueva a la más antigua. Como el bloque
+    # Modificatorias de cada ventana describe lo que la TERMINÓ (o sea, lo que
+    # produjo la ventana siguiente), invertimos el orden y desplazamos en uno,
+    # para que cada VersionEvent cargue el cambio que efectivamente lo produjo.
     raw_versions_oldest_first = list(reversed(raw_versions))
     events: list[VersionEvent] = []
     for i, raw in enumerate(raw_versions_oldest_first):
@@ -159,7 +182,7 @@ def fetch_version_timeline(client: BcnClient, id_norma: int) -> list[VersionEven
         else:
             modificatorias = _extract_modificatorias(raw_versions_oldest_first[i - 1])
         if vigente_desde == BCN_DEFERRED_EVENT_SENTINEL:
-            continue  # not a real date - see BCN_DEFERRED_EVENT_SENTINEL
+            continue  # no es una fecha real; ver BCN_DEFERRED_EVENT_SENTINEL
         events.append(
             VersionEvent(
                 vigente_desde=vigente_desde,
