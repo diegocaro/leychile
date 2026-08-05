@@ -227,6 +227,7 @@ def build_commit_message(
     titulo_norma: str,
     *,
     date_clamped: bool,
+    participantes: list[Author],
     co_authors: list[Author],
     catalogo: dict[str, TipoNorma],
     ruta_documento: Path,
@@ -316,6 +317,15 @@ def build_commit_message(
             "Nota: fecha de commit git sintética (git no admite fechas anteriores a "
             "1970-01-01); la fecha de vigencia real es la indicada arriba."
         )
+
+    # Quién participó y en qué calidad. Va en una sección propia porque el
+    # trailer `Co-authored-by:` tiene formato fijo y no admite el cargo. Los
+    # roles de los firmantes son los textuales de la promulgación.
+    con_rol = [p for p in participantes if p.rol]
+    if con_rol:
+        lines.append("")
+        lines.append("Participantes:")
+        lines.extend(f"  {p.con_rol()}" for p in con_rol)
     if co_authors:
         lines.append("")
         lines.extend(a.trailer() for a in co_authors)
@@ -462,6 +472,7 @@ def commit_event(
         url,
         doc.titulo_norma,
         date_clamped=date_clamped,
+        participantes=resolved.participantes,
         co_authors=resolved.co_authors,
         catalogo=catalogo,
         ruta_documento=target.path.relative_to(DATA_REPO_ROOT),

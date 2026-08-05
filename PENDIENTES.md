@@ -14,7 +14,7 @@ la Ley 20.050 fue modificada después, igual que cualquier otra.
 
 La idea es darle a cada norma el mismo tratamiento que a los códigos y a la
 Constitución: recorrer su línea de tiempo con `get_versiones` y hacer un commit
-por cada versión suya, de modo que `git log normas/ley/20050-241331.md` muestre
+por cada versión suya, de modo que `git log normas/ley/LEY-20050.md` muestre
 cómo cambió *esa ley* en el tiempo.
 
 **Por qué no se hizo todavía: el costo.** Números medidos, no estimados a ojo:
@@ -58,7 +58,30 @@ verdad, y recién ahí decidir si se extiende a las 714.
 
 ---
 
-## 2. Linaje para los códigos
+## 2. Cargo real de los autores parlamentarios
+
+Los commits ya traen una sección "Participantes" con el rol de cada persona. Los
+firmantes tienen su cargo textual, extraído de la promulgación ("Presidente de
+la República", "Ministro de Hacienda"), pero los autores parlamentarios quedan
+con un genérico `autor de la moción`.
+
+La razón es que `get_autores_de_la_ley` sólo entrega nombre e id:
+
+    [{"i":"1713","n":"Iván Moreira Barros"}, ...]
+
+No dice si es diputado o senador, ni de qué período. Ese `i` parece ser el
+identificador de persona de BCN, así que probablemente se pueda cruzar con las
+reseñas parlamentarias que BCN publica en `datos.bcn.cl` para obtener la cámara
+y el período. Habría que confirmar que ese endpoint existe y es consultable, y
+ver cuántas peticiones extra implica (hay cientos de personas distintas en el
+corpus, aunque se repiten mucho, así que la caché ayudaría).
+
+Con eso, en vez de "Iván Moreira Barros — autor de la moción" se podría leer
+"Iván Moreira Barros — diputado, autor de la moción".
+
+---
+
+## 3. Linaje para los códigos
 
 La Constitución ya tiene linaje (cuatro cuerpos encadenados en un solo archivo,
 ver `discover.CONSTITUCION_LINAJE`). Varios códigos tienen la misma estructura y
@@ -76,7 +99,7 @@ investigación, no de programación, y algunos casos van a ser ambiguos.
 
 ---
 
-## 3. Huecos en la cobertura de la Constitución
+## 4. Huecos en la cobertura de la Constitución
 
 BCN no tiene texto versionado para todo el período constitucional. Quedan dos
 huecos conocidos, que no son fallas del pipeline sino de la fuente:

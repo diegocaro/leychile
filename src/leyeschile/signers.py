@@ -41,15 +41,32 @@ PLACEHOLDER_EMAIL_DOMAIN = "sourced-from-bcn.leychile.invalid"
 MAX_NAMED_CO_AUTHORS = 6  # hay mociones con más de una docena de autores; limitamos la lista
 
 
+ROL_AUTOR_MOCION = "autor de la moción"
+ROL_ORGANISMO = "organismo emisor"
+
+
 @dataclass(frozen=True)
 class Author:
     name: str
     email: str
+    # Rol textual de esta persona en la norma: "Presidenta de la República",
+    # "Ministro de Hacienda", "autor de la moción"... Sale de la promulgación
+    # cuando se trata de un firmante, y por eso es el cargo real que aparece en
+    # el documento, no una etiqueta inventada por nosotros.
+    #
+    # No va dentro de `Co-authored-by:` porque ese trailer tiene un formato fijo
+    # ("Nombre <email>") que GitHub parsea; meterle el cargo ensuciaría el
+    # nombre. Se publica en una sección aparte del cuerpo del commit.
+    rol: str = ""
 
     def trailer(self) -> str:
         """Línea `Co-authored-by:`, el formato que GitHub reconoce para
         mostrar varios autores en un mismo commit."""
         return f"Co-authored-by: {self.name} <{self.email}>"
+
+    def con_rol(self) -> str:
+        """Línea legible para la sección de participantes del commit."""
+        return f"{self.name} — {self.rol}" if self.rol else self.name
 
 
 @dataclass(frozen=True)
@@ -59,6 +76,11 @@ class ResolvedAuthors:
     primary: Author
     co_authors: list[Author] = field(default_factory=list)
 
+    @property
+    def participantes(self) -> list[Author]:
+        """Todas las personas involucradas, empezando por el autor principal."""
+        return [self.primary, *self.co_authors]
+
 
 def _slugify_for_email(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text.lower())
@@ -66,17 +88,17 @@ def _slugify_for_email(text: str) -> str:
     return "-".join(ascii_text.split()) or "bcn"
 
 
-def _author_from_name(name: str) -> Author:
-    return Author(name=name, email=f"{_slugify_for_email(name)}@{PLACEHOLDER_EMAIL_DOMAIN}")
+def _author_from_name(name: str, rol: str = "") -> Author:
+    return Author(name=name, email=f"{_slugify_for_email(name)}@{PLACEHOLDER_EMAIL_DOMAIN}", rol=rol)
 
 
 def _author_from_signer(signer: Signer) -> Author:
     # Las firmas del Presidente y de la Junta suelen venir en mayúsculas; las
     # pasamos a formato título para que el nombre del autor se vea normal en
-    # git. Sólo afecta a Author.name, no al texto de Signer.role que se usa en
-    # otras partes (p. ej. en los mensajes de commit).
+    # git. Sólo afecta a Author.name, no al texto de Signer.role, que se
+    # conserva íntegro como rol.
     name = signer.name.title() if signer.name.isupper() else signer.name
-    return _author_from_name(name)
+    return _author_from_name(name, rol=signer.role)
 
 
 def fetch_named_authors(client: BcnClient, id_norma: int) -> list[str]:
@@ -120,9 +142,9 @@ def resolve_authors(
     co_authors: list[Author] = []
 
     if named:
-        primary = _author_from_name(named[0])
+        primary = _author_from_name(named[0], rol=ROL_AUTOR_MOCION)
         for extra_name in named[1 : MAX_NAMED_CO_AUTHORS + 1]:
-            co_authors.append(_author_from_name(extra_name))
+            co_authors.append(_author_from_name(extra_name, rol=ROL_AUTOR_MOCION))
         if pres is not None:
             co_authors.append(_author_from_signer(pres))
         if minister is not None:
@@ -133,6 +155,6 @@ def resolve_authors(
             co_authors.append(_author_from_signer(minister))
     else:
         organismo_clean = organismo.strip() or "Congreso Nacional de Chile"
-        primary = _author_from_name(organismo_clean.title())
+        primary = _author_from_name(organismo_clean.title(), rol=ROL_ORGANISMO)
 
     return ResolvedAuthors(primary=primary, co_authors=co_authors)
