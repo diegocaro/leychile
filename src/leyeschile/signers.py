@@ -86,13 +86,26 @@ def fetch_named_authors(client: BcnClient, id_norma: int) -> list[str]:
     return [entry["n"] for entry in data if entry.get("n")]
 
 
-def organismo_only_authors(organismo: str) -> ResolvedAuthors:
-    """Para las transiciones donde BCN no registra qué norma las causó (ver
-    `versions.VersionEvent.is_unknown_cause`): no hay ningún id_norma que
-    consultar para obtener autores ni firmantes, así que se va directo al
-    respaldo por organismo."""
-    organismo_clean = organismo.strip() or "Congreso Nacional de Chile"
-    return ResolvedAuthors(primary=_author_from_name(organismo_clean.title()))
+# Autor de los commits donde BCN no registra qué norma causó el cambio (ver
+# `versions.VersionEvent.is_unknown_cause`). Son ~250 de más de mil.
+#
+# Antes se usaba el organismo del documento afectado, pero eso le atribuye una
+# responsabilidad que la fuente no afirma en ninguna parte. Tampoco sirve
+# deducir quién encabezaba el Ejecutivo en esa fecha: sería inventar un dato que
+# BCN no tiene, y en el período 1973-1990 además implicaría atribuirle
+# personalmente cambios que no consta que haya firmado.
+#
+# Un marcador neutro es la única opción que no agrega información falsa: dice
+# exactamente lo que sabemos, que es que no sabemos.
+AUTOR_SIN_REGISTRO = Author(
+    name="Norma modificatoria no registrada",
+    email=f"sin-registro@{PLACEHOLDER_EMAIL_DOMAIN}",
+)
+
+
+def autores_sin_registro() -> ResolvedAuthors:
+    """Autoría de una transición cuya norma causante BCN no registra."""
+    return ResolvedAuthors(primary=AUTOR_SIN_REGISTRO)
 
 
 def resolve_authors(

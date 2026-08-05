@@ -83,6 +83,25 @@ class Modificatoria:
     fecha_publicacion: date | None
     inicio_vigencia: date
 
+    @property
+    def fecha_de_su_texto(self) -> date:
+        """Fecha con la que hay que pedir el texto *de esta norma*.
+
+        Ojo con la distinción, que costó un bug: `inicio_vigencia` es cuándo
+        empezó a surtir efecto sobre la norma modificada, y puede ser anterior a
+        la publicación de la norma modificatoria (efecto retroactivo). Pedir el
+        texto de una ley en una fecha en que todavía no existía devuelve un
+        documento incompleto, sin el bloque de Promulgación, y por lo tanto sin
+        firmantes: por eso muchas modificaciones terminaban atribuidas al
+        ministerio en vez de a quien firmó.
+
+        Ejemplo real: la Ley 20.899 rige sobre el Código del Trabajo desde el
+        2016-01-01, pero se publicó el 2016-02-08. Pedida al 2016-01-01 no trae
+        firmantes; pedida al 2016-02-08 trae a Michelle Bachelet Jeria y a su
+        ministro de Hacienda.
+        """
+        return self.fecha_publicacion or self.inicio_vigencia
+
 
 @dataclass(frozen=True)
 class VersionEvent:
@@ -169,7 +188,20 @@ def _extract_modificatorias(version_raw: dict) -> tuple[Modificatoria, ...]:
     raw_mods = block["Modificatoria"]
     if not isinstance(raw_mods, list):
         raw_mods = [raw_mods]
-    return tuple(_parse_modificatoria(m) for m in raw_mods if int(m.get("@idNorma") or 0) > 0)
+
+    # Se deduplica por idNorma: BCN a veces repite la misma norma dentro de una
+    # versión, una vez por cada artículo que tocó (p. ej. la Ley 19.806 aparece
+    # dos veces en la versión 2002-05-31 del Código Tributario). Para nuestro
+    # nivel de detalle —un commit por versión— es la misma norma modificatoria.
+    vistas: set[int] = set()
+    salida: list[Modificatoria] = []
+    for crudo in raw_mods:
+        id_norma = int(crudo.get("@idNorma") or 0)
+        if id_norma <= 0 or id_norma in vistas:
+            continue
+        vistas.add(id_norma)
+        salida.append(_parse_modificatoria(crudo))
+    return tuple(salida)
 
 
 def fetch_version_timeline(client: BcnClient, id_norma: int) -> list[VersionEvent]:

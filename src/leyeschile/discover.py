@@ -114,12 +114,14 @@ def build_targets_yaml(client: BcnClient) -> list[dict]:
     entries: list[dict] = [
         {
             "slug": CONSTITUCION_SLUG,
+            "categoria": "constitucion",
             "note": CONSTITUCION_TITULO,
             "linaje": CONSTITUCION_LINAJE,
         }
     ]
     entries.extend(
-        {"slug": t.slug, "id_norma": t.id_norma, "note": t.titulo} for t in fetch_codigos(client)
+        {"slug": t.slug, "categoria": "codigo", "id_norma": t.id_norma, "note": t.titulo}
+        for t in fetch_codigos(client)
     )
     return entries
 

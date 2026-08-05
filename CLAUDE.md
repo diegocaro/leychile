@@ -13,11 +13,27 @@ Un pipeline que construye la historia git de la legislación chilena (la
 Constitución y los 15 Códigos oficiales) a partir de los datos públicos de
 LeyChile (BCN), sin LLMs ni transcripción manual.
 
-Este repositorio es **sólo la herramienta**. La salida —los `leyes/*.md` y su
-historia de commits— se escribe en un repositorio vecino, `../leychile`
-(`DATA_REPO_ROOT` en `build_repo.py`), que debe existir y ser un repositorio
-git (`git init`) antes de ejecutar el pipeline. Nunca busques el texto de las
-leyes ni sus commits en *este* repositorio.
+Este repositorio es **sólo la herramienta**. La salida se escribe en un
+repositorio vecino, `../leychile` (`DATA_REPO_ROOT` en `build_repo.py`), que
+debe existir y ser un repositorio git (`git init`) antes de ejecutar el
+pipeline. Nunca busques el texto de las normas ni sus commits en *este*
+repositorio.
+
+El repositorio de datos se organiza en tres carpetas:
+
+- `constitucion/`: la Constitución, aparte por ser jerárquicamente distinta.
+- `codigos/`: los 15 códigos oficiales.
+- `normas/<tipo>/`: las normas que modificaron a los anteriores (leyes,
+  decretos leyes, autos acordados, sentencias...), en subcarpetas según el
+  catálogo oficial de tipos de BCN.
+
+Cada commit contiene a la vez el **efecto** (el código modificado) y la
+**causa** (el texto de la norma que lo modificó), y enlaza la norma tanto a su
+archivo en el repo como a BCN.
+
+Ver `PENDIENTES.md` para ideas ya evaluadas y postergadas, con sus costos
+medidos (sobre todo: darle historia de versiones propia a cada norma
+modificatoria).
 
 ## Comandos
 
@@ -64,6 +80,11 @@ descarga de versiones históricas).
 4. `render.py`: `NormaDocument` → Markdown con un bloque de front-matter de
    auditoría (URL fuente, `idNorma`, fecha de versión, momento de descarga),
    para que cada archivo y cada commit se pueda verificar contra BCN.
+4b. `tipos_norma.py`: catálogo oficial de tipos de norma (`getTiposNorma`, 39
+   entradas). Traduce las siglas (`AA` → "Auto Acordado", `SEN` → "Sentencia"),
+   define la carpeta de cada tipo dentro de `normas/`, y decide el verbo del
+   mensaje de commit: una sentencia del TC *deroga parte de* un código, una
+   rectificación *rectifica el texto de*, una ley *modifica*.
 5. `promulgacion.py` + `signers.py`: resuelven la autoría real del commit.
    Parlamentarios autores (`get_autores_de_la_ley`, sólo poblado en leyes que
    nacieron como moción) más/o el Presidente —o la Junta de Gobierno— y el

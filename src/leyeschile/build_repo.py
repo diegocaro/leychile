@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -39,16 +40,28 @@ import yaml
 
 from .client import BcnClient
 from .norma_json import NormaDocument, parse_norma_json
-from .render import render_markdown
-from .signers import Author, organismo_only_authors, resolve_authors
-from .versions import VersionEvent, fetch_version_timeline
+from .render import render_markdown, render_markdown_norma
+from .signers import Author, autores_sin_registro, resolve_authors
+from .tipos_norma import TipoNorma, describir, fetch_catalogo, verbo_para
+from .versions import Modificatoria, VersionEvent, fetch_version_timeline
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 TARGETS_FILE = REPO_ROOT / "config" / "targets.yaml"
 STATE_FILE = REPO_ROOT / "state.json"
 
 DATA_REPO_ROOT = REPO_ROOT.parent / "leychile"
-LAWS_DIR = DATA_REPO_ROOT / "leyes"
+
+# El repositorio de datos se organiza en tres carpetas, según qué es cada cosa:
+#
+#   constitucion/  la Constitución (un solo archivo, con su linaje completo).
+#                  Va aparte de los códigos porque es jerárquicamente distinta.
+#   codigos/       los 15 códigos oficiales.
+#   normas/<tipo>/ las normas que modificaron a los anteriores (leyes, decretos
+#                  leyes, autos acordados, sentencias...), en subcarpetas por
+#                  tipo según el catálogo oficial de BCN (ver tipos_norma.py).
+CONSTITUCION_DIR = DATA_REPO_ROOT / "constitucion"
+CODIGOS_DIR = DATA_REPO_ROOT / "codigos"
+NORMAS_DIR = DATA_REPO_ROOT / "normas"
 
 # git rechaza de plano cualquier fecha de commit anterior a la época Unix
 # (verificado en vivo contra git 2.50.1: "fatal: invalid date format", tanto en
@@ -80,8 +93,8 @@ class LineageLink:
 
 @dataclass
 class Target:
-    """Documento que seguimos: un archivo en `leyes/` construido a partir de
-    uno o más eslabones.
+    """Documento que seguimos: un archivo del repo construido a partir de uno o
+    más eslabones.
 
     La mayoría de los documentos tiene un solo eslabón. La Constitución tiene
     cuatro, porque BCN no modela la historia constitucional como una sola
@@ -92,10 +105,16 @@ class Target:
 
     slug: str
     links: list[LineageLink]
+    categoria: str = "codigo"  # "codigo" | "constitucion"
 
     @property
     def tiene_linaje(self) -> bool:
         return len(self.links) > 1
+
+    @property
+    def path(self) -> Path:
+        base = CONSTITUCION_DIR if self.categoria == "constitucion" else CODIGOS_DIR
+        return base / f"{self.slug}.md"
 
 
 @dataclass
@@ -130,8 +149,63 @@ def load_targets() -> list[Target]:
             ]
         else:
             links = [LineageLink(id_norma=int(t["id_norma"]))]
-        targets.append(Target(slug=t["slug"], links=links))
+        targets.append(
+            Target(slug=t["slug"], links=links, categoria=t.get("categoria", "codigo"))
+        )
     return targets
+
+
+# Tipos con numeración nacional correlativa: el número nunca se reinicia, así
+# que identifica la norma por sí solo (la Ley 21.522 es única para siempre).
+# Verificado en el corpus: 613 leyes y 52 decretos leyes numerados, sin una sola
+# colisión.
+#
+# El resto de los tipos reinicia la numeración cada año y por organismo, así que
+# el número solo no distingue nada: hay dos "DFL 1" del Ministerio de Justicia
+# que son normas completamente distintas (el de 1992 corrige el Código de
+# Justicia Militar; el de 1995 fija el texto refundido de la Ley 19.366 sobre
+# estupefacientes), y dos "AA 21" de la Corte Suprema que ella misma titula
+# "ACTA N° 21-2018" y "ACTA N° 21-2020", con el año en el nombre oficial.
+TIPOS_NUMERACION_CORRELATIVA = {"LEY", "DL"}
+
+
+def ruta_de_norma(mod: Modificatoria, tipo: TipoNorma) -> Path:
+    """Dónde se guarda una norma modificatoria dentro de `normas/<tipo>/`.
+
+    El nombre depende de cómo se numera ese tipo de norma:
+
+    - Numeración correlativa nacional (LEY, DL): `LEY-21522.md`. El número basta.
+    - Numeración que se reinicia cada año (DFL, AA, DTO...): `DFL-1995-0001.md`,
+      con el año por delante.
+    - Normas sin número ("S/N", 27 en el corpus: leyes del siglo XIX, autos
+      acordados antiguos, sentencias y avisos): `LEY-1874-SN-131717.md`. Acá ni
+      el año alcanza —hay tres leyes S/N de 1874—, así que se agrega el
+      `idNorma`, que es el identificador único de BCN.
+
+    Ver `TIPOS_NUMERACION_CORRELATIVA` para por qué la distinción es de fondo y
+    no un accidente del corpus actual.
+
+    Dos detalles de formato, ambos para que listar la carpeta ya venga ordenado
+    de forma útil:
+
+    - **El año va antes del número**, cuando corresponde. Con NUMERO-AÑO,
+      `DFL-00001-1995` quedaría antes que `DFL-00002-1980`, mezclando épocas.
+    - **El número se rellena con ceros**, para que el orden alfabético coincida
+      con el numérico (sin relleno, `LEY-19506` queda antes que `LEY-9506`,
+      porque compara caracteres y no valores). El ancho depende del tipo de
+      numeración: **5 dígitos** en las correlativas, que acumulan más de un
+      siglo de normas y ya van por los 21.000; **4 dígitos** en las que se
+      reinician cada año, donde el número parte de cero en enero y no alcanza
+      esas magnitudes.
+    """
+    numero_crudo = str(mod.nro_norma).strip()
+    anio = (mod.fecha_publicacion or mod.inicio_vigencia).year
+    if not numero_crudo.isdigit():
+        return NORMAS_DIR / tipo.slug / f"{tipo.abbr}-{anio}-SN-{mod.id_norma}.md"
+    numero = int(numero_crudo)
+    if tipo.abbr in TIPOS_NUMERACION_CORRELATIVA:
+        return NORMAS_DIR / tipo.slug / f"{tipo.abbr}-{numero:05d}.md"
+    return NORMAS_DIR / tipo.slug / f"{tipo.abbr}-{anio}-{numero:04d}.md"
 
 
 def load_state() -> set[str]:
@@ -154,6 +228,9 @@ def build_commit_message(
     *,
     date_clamped: bool,
     co_authors: list[Author],
+    catalogo: dict[str, TipoNorma],
+    ruta_documento: Path,
+    rutas_normas: dict[int, Path] | None = None,
     inicio_de_eslabon: LineageLink | None = None,
 ) -> str:
     """Mensaje del commit: qué cambió, cuándo rigió y de qué URL de BCN salió.
@@ -162,10 +239,39 @@ def build_commit_message(
     termina con las líneas `Co-authored-by:` que GitHub usa para mostrar a
     todos los autores y firmantes.
 
+    El verbo depende del tipo de norma (ver `tipos_norma.verbo_para`): una
+    sentencia del Tribunal Constitucional no "modifica" un código, deroga la
+    parte declarada inconstitucional; una rectificación corrige una errata del
+    Diario Oficial.
+
+    `rutas_normas` mapea idNorma -> archivo guardado en el repo, para enlazar la
+    norma modificatoria además de citar su URL en BCN.
+
     `inicio_de_eslabon` se pasa cuando este commit estrena un eslabón del
     linaje, para advertir que el diff gigante es un cambio de cuerpo legal y no
     una reforma puntual.
+
+    El **asunto** conserva la descripción legible y agrega al final el archivo
+    de la norma modificatoria, para poder ubicarla o buscarla directamente
+    (`git log --grep=LEY-21522`) sin abrir el cuerpo del commit.
     """
+    rutas_normas = rutas_normas or {}
+    # Los títulos de BCN traen saltos de línea incrustados; el asunto del commit
+    # tiene que ser una sola línea.
+    titulo_norma = " ".join((titulo_norma or "").split())
+
+    def _describe(m: Modificatoria) -> str:
+        tipo = describir(catalogo, m.tipo_norma)
+        numero = "" if str(m.nro_norma) == "S/N" else f" {m.nro_norma}"
+        return f"{tipo.nombre}{numero}"
+
+    def _nombre_archivo(m: Modificatoria) -> str:
+        """Identificador corto de la norma: el nombre de su archivo sin `.md`."""
+        ruta = rutas_normas.get(m.id_norma)
+        if ruta is not None:
+            return ruta.stem
+        return ruta_de_norma(m, describir(catalogo, m.tipo_norma)).stem
+
     if inicio_de_eslabon is not None:
         header = f"Inicia {inicio_de_eslabon.nombre or titulo_norma}"
     elif version.is_original:
@@ -173,11 +279,32 @@ def build_commit_message(
     elif version.is_unknown_cause:
         header = f"Nueva versión de {titulo_norma} (norma modificatoria no registrada por BCN)"
     else:
-        mods_desc = "; ".join(f"{m.tipo_norma} {m.nro_norma} ({m.organismo})" for m in version.modificatorias)
-        header = f"{mods_desc} modifica {titulo_norma}"
+        principal = version.modificatorias[0]
+        verbo = verbo_para(principal.tipo_norma)
+        desc = "; ".join(_describe(m) for m in version.modificatorias)
+        header = f"{desc} {verbo} {titulo_norma}"
+
+    # Archivos tocados por este commit, al final del asunto: primero la(s)
+    # norma(s) modificatoria(s) y luego el documento afectado. Con muchas
+    # modificatorias se nombra la primera y se cuentan las demás, que igual
+    # quedan detalladas en el cuerpo.
+    nombres = [_nombre_archivo(m) for m in version.modificatorias]
+    if len(nombres) > 2:
+        nombres = [nombres[0], f"+{len(nombres) - 1} normas"]
+    partes = nombres + [str(ruta_documento)]
+    header = f"{header} [{' -> '.join(partes)}]"
+
     lines = [header, "", f"Fecha de vigencia: {version.vigente_desde.isoformat()}", f"Fuente: {source_url}"]
     for m in version.modificatorias:
-        lines.append(f"Norma modificatoria: https://www.leychile.cl/Navegar?idNorma={m.id_norma}")
+        tipo = describir(catalogo, m.tipo_norma)
+        lines.append("")
+        lines.append(f"{_describe(m)} ({tipo.abbr}) — {m.organismo or 'organismo no registrado'}")
+        if m.titulo:
+            lines.append(f"  {' '.join(m.titulo.split())}")
+        ruta = rutas_normas.get(m.id_norma)
+        if ruta is not None:
+            lines.append(f"  Texto en este repo: {ruta}")
+        lines.append(f"  En BCN: https://www.leychile.cl/Navegar?idNorma={m.id_norma}")
     if inicio_de_eslabon is not None:
         lines.append(
             "\nNota: este commit estrena un nuevo cuerpo legal dentro del linaje del "
@@ -229,14 +356,62 @@ def _fetch_norma_doc(client: BcnClient, id_norma: int, version_date: str) -> Nor
     return parse_norma_json(result.content, id_norma=id_norma, version_date=version_date)
 
 
+def _guardar_norma(
+    client: BcnClient, mod: Modificatoria, catalogo: dict[str, TipoNorma]
+) -> tuple[Path | None, NormaDocument | None]:
+    """Guarda el texto de una norma modificatoria en `normas/<tipo>/`.
+
+    Devuelve (ruta relativa al repo de datos, documento) para poder enlazarla en
+    el mensaje del commit y reutilizar el documento al resolver los firmantes,
+    sin descargarlo dos veces. Si la descarga falla devuelve (None, None): tener
+    el texto de la norma es deseable, pero nunca debe impedir el commit.
+    """
+    tipo = describir(catalogo, mod.tipo_norma)
+    # El texto se pide con la fecha de la norma misma, no con la de su efecto
+    # sobre el documento modificado (ver Modificatoria.fecha_de_su_texto).
+    fecha_texto = mod.fecha_de_su_texto.isoformat()
+    try:
+        url = GET_NORMA_JSON_URL_TEMPLATE.format(id_norma=mod.id_norma, version_date=fecha_texto)
+        result = client.get(url)
+        doc = parse_norma_json(result.content, id_norma=mod.id_norma, version_date=fecha_texto)
+    except Exception:  # noqa: BLE001 - ver docstring
+        return None, None
+
+    ruta = ruta_de_norma(mod, tipo)
+    ruta.parent.mkdir(parents=True, exist_ok=True)
+    ruta.write_text(
+        render_markdown_norma(
+            doc,
+            source_url=url,
+            fetched_at=result.fetched_at,
+            tipo_abbr=tipo.abbr,
+            tipo_nombre=tipo.nombre,
+            numero=str(mod.nro_norma),
+            organismo=mod.organismo,
+            fecha_vigencia=mod.inicio_vigencia.isoformat(),
+            fecha_publicacion=mod.fecha_publicacion.isoformat() if mod.fecha_publicacion else "",
+        )
+    )
+    return ruta.relative_to(DATA_REPO_ROOT), doc
+
+
 def commit_event(
-    client: BcnClient, event: CommitEvent, commit_dt: str, *, inicio_de_eslabon: LineageLink | None = None
+    client: BcnClient,
+    event: CommitEvent,
+    commit_dt: str,
+    catalogo: dict[str, TipoNorma],
+    *,
+    inicio_de_eslabon: LineageLink | None = None,
 ) -> None:
     """Descarga, renderiza y commitea una versión de un documento.
 
     El texto se pide siempre a `event.link.id_norma`, que en un documento con
     linaje no coincide con "la norma del target": va cambiando de eslabón a
     medida que avanza la historia.
+
+    En el mismo commit se guardan también las normas que causaron el cambio, de
+    modo que un commit contenga a la vez el efecto (el código modificado) y la
+    causa (la ley que lo modificó).
     """
     target, version, link = event.target, event.version, event.link
     url = GET_NORMA_JSON_URL_TEMPLATE.format(
@@ -246,9 +421,20 @@ def commit_event(
     doc = parse_norma_json(result.content, id_norma=link.id_norma, version_date=version.vigente_desde.isoformat())
     markdown = render_markdown(doc, source_url=url, fetched_at=result.fetched_at)
 
-    LAWS_DIR.mkdir(parents=True, exist_ok=True)
-    law_path = LAWS_DIR / f"{target.slug}.md"
-    law_path.write_text(markdown)
+    target.path.parent.mkdir(parents=True, exist_ok=True)
+    target.path.write_text(markdown)
+    archivos = [target.path]
+
+    # Guardar el texto de cada norma modificatoria junto al documento afectado.
+    rutas_normas: dict[int, Path] = {}
+    docs_normas: dict[int, NormaDocument] = {}
+    for mod in version.modificatorias:
+        ruta, doc_norma = _guardar_norma(client, mod, catalogo)
+        if ruta is not None:
+            rutas_normas[mod.id_norma] = ruta
+            archivos.append(DATA_REPO_ROOT / ruta)
+        if doc_norma is not None:
+            docs_normas[mod.id_norma] = doc_norma
 
     organismo = doc.organismos[0] if doc.organismos else "Congreso Nacional de Chile"
     if version.is_original:
@@ -256,20 +442,18 @@ def commit_event(
         # publicación original), así que no hace falta descargar nada más.
         resolved = resolve_authors(client, id_norma=link.id_norma, organismo=organismo, promulgacion_doc=doc)
     elif version.is_unknown_cause:
-        # BCN no registra qué norma causó esta transición: no hay id_norma que
-        # consultar para autores ni firmantes, así que no se puede ser más
-        # específico que el organismo.
-        resolved = organismo_only_authors(organismo)
+        # BCN no registra qué norma causó esta transición, así que no hay a
+        # quién atribuirla: ver el comentario de AUTOR_SIN_REGISTRO.
+        resolved = autores_sin_registro()
     else:
-        # Para saber quién firmó la modificación hay que ir al texto de la
-        # norma modificatoria, que es un documento distinto.
+        # Los firmantes salen del texto de la norma modificatoria, que ya
+        # descargamos y guardamos arriba.
         primary_mod = version.modificatorias[0]
-        try:
-            amending_doc = _fetch_norma_doc(client, primary_mod.id_norma, primary_mod.inicio_vigencia.isoformat())
-        except Exception:  # noqa: BLE001 - el firmante es "si se puede"; nunca debe frenar el commit
-            amending_doc = None
         resolved = resolve_authors(
-            client, id_norma=primary_mod.id_norma, organismo=primary_mod.organismo, promulgacion_doc=amending_doc
+            client,
+            id_norma=primary_mod.id_norma,
+            organismo=primary_mod.organismo,
+            promulgacion_doc=docs_normas.get(primary_mod.id_norma),
         )
 
     date_clamped = version.vigente_desde < GIT_EPOCH
@@ -279,6 +463,9 @@ def commit_event(
         doc.titulo_norma,
         date_clamped=date_clamped,
         co_authors=resolved.co_authors,
+        catalogo=catalogo,
+        ruta_documento=target.path.relative_to(DATA_REPO_ROOT),
+        rutas_normas=rutas_normas,
         inicio_de_eslabon=inicio_de_eslabon,
     )
 
@@ -295,8 +482,66 @@ def commit_event(
         }
     )
 
-    git("add", str(law_path.relative_to(DATA_REPO_ROOT)))
+    for archivo in archivos:
+        git("add", str(archivo.relative_to(DATA_REPO_ROOT)))
     git("commit", "-m", message, env=env)
+
+
+MARCA_INDICE = "<!-- INDICE-GENERADO -->"
+
+
+def generar_indice(targets: list[Target], catalogo: dict[str, TipoNorma]) -> str:
+    """Índice navegable del repo de datos, generado a partir de lo que hay en
+    disco (no de lo que creemos que debería haber).
+
+    Se inserta en el README bajo la marca `MARCA_INDICE`, reemplazando todo lo
+    que venga después, para poder regenerarlo en cada build sin pisar el texto
+    escrito a mano.
+    """
+    lineas = [MARCA_INDICE, "", "## Índice", ""]
+
+    consti = [t for t in targets if t.categoria == "constitucion" and t.path.exists()]
+    if consti:
+        lineas.append("### Constitución")
+        lineas.append("")
+        for t in consti:
+            lineas.append(f"- [{t.slug}]({t.path.relative_to(DATA_REPO_ROOT)})")
+        lineas.append("")
+
+    codigos = sorted(
+        (t for t in targets if t.categoria == "codigo" and t.path.exists()), key=lambda t: t.slug
+    )
+    if codigos:
+        lineas += ["### Códigos", "", "| Código | Versiones en el repo |", "|---|---|"]
+        for t in codigos:
+            rel = t.path.relative_to(DATA_REPO_ROOT)
+            lineas.append(f"| [{t.slug}]({rel}) | ver `git log -- {rel}` |")
+        lineas.append("")
+
+    if NORMAS_DIR.exists():
+        lineas += ["### Normas modificatorias", "", "| Tipo | Cantidad | Carpeta |", "|---|---|---|"]
+        por_nombre = {t.slug: t for t in catalogo.values()}
+        for carpeta in sorted(NORMAS_DIR.iterdir()):
+            if not carpeta.is_dir():
+                continue
+            cantidad = len(list(carpeta.glob("*.md")))
+            tipo = por_nombre.get(carpeta.name)
+            nombre = tipo.nombre if tipo else carpeta.name
+            lineas.append(f"| {nombre} | {cantidad} | [`normas/{carpeta.name}/`](normas/{carpeta.name}/) |")
+        lineas.append("")
+
+    return "\n".join(lineas)
+
+
+def escribir_indice(targets: list[Target], catalogo: dict[str, TipoNorma]) -> Path | None:
+    """Reescribe la sección de índice del README del repo de datos."""
+    readme = DATA_REPO_ROOT / "README.md"
+    if not readme.exists():
+        return None
+    contenido = readme.read_text()
+    cabecera = contenido.split(MARCA_INDICE)[0].rstrip()
+    readme.write_text(f"{cabecera}\n\n{generar_indice(targets, catalogo)}")
+    return readme
 
 
 def main() -> None:
@@ -309,6 +554,7 @@ def main() -> None:
     targets = load_targets()
     client = BcnClient(min_delay_seconds=6.0)
     done = load_state()
+    catalogo = fetch_catalogo(client)
 
     # Primero se arma la línea de tiempo completa de todas las normas, y recién
     # después se commitea: el orden cronológico es global, así que no se puede
@@ -351,6 +597,7 @@ def main() -> None:
                 client,
                 event,
                 commit_datetimes[event.key],
+                catalogo,
                 inicio_de_eslabon=inicios_de_eslabon.get(event.key),
             )
         except Exception as exc:  # noqa: BLE001 - un evento malo no puede matar un recorrido de días
@@ -360,6 +607,19 @@ def main() -> None:
         done.add(event.key)
         save_state(done)
         committed_this_run += 1
+
+    # El índice se regenera al final, cuando ya están todos los archivos en
+    # disco, y se commitea aparte: describe el repo, no es historia legal.
+    readme = escribir_indice(targets, catalogo)
+    if readme is not None:
+        subprocess.run(["git", "add", "README.md"], cwd=DATA_REPO_ROOT, check=True)
+        hay_cambios = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"], cwd=DATA_REPO_ROOT
+        ).returncode != 0
+        if hay_cambios:
+            subprocess.run(
+                ["git", "commit", "-m", "Actualiza el índice del README"], cwd=DATA_REPO_ROOT, check=True
+            )
 
     print(
         f"Listo. {len(all_events)} versiones en total, {len(done)} commiteadas acumuladas "

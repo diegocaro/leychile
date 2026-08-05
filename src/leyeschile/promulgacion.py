@@ -36,12 +36,23 @@ PROMULGACION_MARKER_RE = re.compile(
     r"publ[ií]quese en el diario oficial|t[oó]mese raz[oó]n",
     re.IGNORECASE,
 )
-PRESIDENT_ROLE_RE = re.compile(r"presidente de la rep[uú]blica", re.IGNORECASE)
+# "Presidenta" además de "Presidente": si sólo se busca el masculino, los
+# períodos de Michelle Bachelet no matchean y la firma presidencial se pierde.
+PRESIDENT_ROLE_RE = re.compile(r"president[ae] de la rep[uú]blica", re.IGNORECASE)
 JUNTA_ROLE_RE = re.compile(r"junta de gobierno", re.IGNORECASE)
 MINISTER_ROLE_RE = re.compile(r"\bministr[oa]\b", re.IGNORECASE)
 SUBSECRETARIO_ROLE_RE = re.compile(r"subsecretari[oa]", re.IGNORECASE)
 TRANSCRIBER_MARKER_RE = re.compile(r"lo que transcribo", re.IGNORECASE)
 ROLE_MAX_LEN = 100
+
+# Respaldo para detectar el bloque de promulgación cuando no trae ninguna de las
+# frases rituales de arriba. Pasa de verdad: en la Ley 20.773 el bloque final
+# empieza directamente con "Santiago, 15 de septiembre de 2014.- MICHELLE
+# BACHELET JERIA, Presidenta de la República.- ...", sin "promúlguese" ni
+# "llévese a efecto". Buscar cargos de firma recupera esos casos.
+FIRMA_ROLE_RE = re.compile(
+    r"president[ae] de la rep[uú]blica|junta de gobierno|ministr[oa]\s+d", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -58,6 +69,12 @@ def _find_promulgacion_block(blocks: list[Block]) -> Block | None:
     # Encabezado contiene frases parecidas que pueden confundirse con firmas.
     for block in reversed(blocks):
         if block.text and PROMULGACION_MARKER_RE.search(block.text):
+            return block
+    # Segunda pasada: bloques que no traen las frases rituales pero sí cargos de
+    # firma (ver FIRMA_ROLE_RE). Va después para que las frases rituales tengan
+    # prioridad cuando existen.
+    for block in reversed(blocks):
+        if block.text and FIRMA_ROLE_RE.search(block.text):
             return block
     return None
 

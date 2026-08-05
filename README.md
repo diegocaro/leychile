@@ -121,7 +121,10 @@ como a quien la firmó:
 
 El autor principal del commit es el primer parlamentario autor si existe; si
 no, el firmante principal de la promulgación; y si tampoco, el organismo
-emisor. Todos los demás (el resto de los autores, y los firmantes cuando el
+emisor. Cuando BCN directamente no registra qué norma causó un cambio (unos 250
+de más de mil), no se atribuye a nadie: el autor es un marcador neutro, "Norma
+modificatoria no registrada". Deducir quién encabezaba el Ejecutivo en esa fecha
+sería inventar un dato que la fuente no tiene. Todos los demás (el resto de los autores, y los firmantes cuando el
 autor principal fue un parlamentario) se agregan como líneas
 `Co-authored-by:`, que es el formato que GitHub usa para mostrar varios
 autores en un mismo commit. Así, una ley de moción acredita a sus diputados

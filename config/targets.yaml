@@ -1,4 +1,5 @@
 - slug: constitucion-politica-de-la-republica-de-chile
+  categoria: constitucion
   note: Constitución Política de la República de Chile
   linaje:
   - id_norma: 137535
@@ -10,47 +11,62 @@
   - id_norma: 242302
     nombre: Texto refundido de 2005 (DTO 100)
 - slug: codigo-civil
+  categoria: codigo
   id_norma: 172986
   note: Código Civil
 - slug: codigo-penal
+  categoria: codigo
   id_norma: 1984
   note: Código Penal
 - slug: codigo-del-trabajo
+  categoria: codigo
   id_norma: 207436
   note: Código del Trabajo
 - slug: codigo-de-comercio
+  categoria: codigo
   id_norma: 1974
   note: Código de Comercio
 - slug: codigo-tributario
+  categoria: codigo
   id_norma: 6374
   note: Código Tributario
 - slug: codigo-de-procedimiento-civil
+  categoria: codigo
   id_norma: 22740
   note: Código de Procedimiento Civil
 - slug: codigo-procesal-penal
+  categoria: codigo
   id_norma: 176595
   note: Código Procesal Penal
 - slug: codigo-organico-de-tribunales
+  categoria: codigo
   id_norma: 25563
   note: Código Orgánico de Tribunales
 - slug: codigo-de-aguas
+  categoria: codigo
   id_norma: 5605
   note: Código de Aguas
 - slug: codigo-de-mineria
+  categoria: codigo
   id_norma: 29668
   note: Código de Minería
 - slug: codigo-aeronautico
+  categoria: codigo
   id_norma: 30287
   note: Código Aeronáutico
 - slug: codigo-sanitario
+  categoria: codigo
   id_norma: 5595
   note: Código Sanitario
 - slug: codigo-de-justicia-militar
+  categoria: codigo
   id_norma: 18914
   note: Código de Justicia Militar
 - slug: codigo-de-derecho-internacional-privado
+  categoria: codigo
   id_norma: 12820
   note: Código de Derecho Internacional Privado
 - slug: codigo-de-procedimiento-penal
+  categoria: codigo
   id_norma: 22960
   note: Código de Procedimiento Penal
