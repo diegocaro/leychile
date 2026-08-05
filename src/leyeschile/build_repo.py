@@ -295,6 +295,13 @@ def build_commit_message(
     partes = nombres + [str(ruta_documento)]
     header = f"{header} [{' -> '.join(partes)}]"
 
+    # La fecha real de vigencia va al principio del asunto porque la fecha de
+    # git no sirve para orientarse: todo lo anterior a 1970 aparece como
+    # 1970-01-01 (ver GIT_EPOCH), que es justamente el tramo más difícil de
+    # seguir. Con el prefijo, `git log --oneline` muestra la cronología
+    # verdadera aunque git no pueda representarla en sus propias fechas.
+    header = f"{version.vigente_desde.isoformat()} {header}"
+
     lines = [header, "", f"Fecha de vigencia: {version.vigente_desde.isoformat()}", f"Fuente: {source_url}"]
     for m in version.modificatorias:
         tipo = describir(catalogo, m.tipo_norma)

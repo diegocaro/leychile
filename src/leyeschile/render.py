@@ -75,6 +75,10 @@ def render_markdown_norma(
         # diferir, incluso con efecto retroactivo).
         f"fecha_publicacion: {fecha_publicacion or doc.fecha_publicacion}",
         f"fecha_vigencia_de_la_modificacion: {fecha_vigencia}",
+        # Estado actual de la norma completa. Sin esto, el archivo de una ley
+        # derogada se lee como si siguiera vigente.
+        f"derogada: {'true' if doc.derogado else 'false'}",
+        *([f"fecha_derogacion: {doc.fecha_derogacion}"] if doc.fecha_derogacion else []),
         f"fetched_at: {fetched_at}",
         "---",
         "",
@@ -83,6 +87,13 @@ def render_markdown_norma(
         f"*{_una_linea(doc.titulo_norma)}*",
         "",
     ]
+    if doc.derogado:
+        cuando = f" el {doc.fecha_derogacion}" if doc.fecha_derogacion else ""
+        front_matter += [
+            f"> **NORMA DEROGADA{cuando}.** El texto que sigue es el que tuvo mientras "
+            "estuvo vigente; se conserva por su valor histórico, pero ya no rige.",
+            "",
+        ]
     body: list[str] = []
     for block in doc.blocks:
         body.extend(_render_block(block, depth=1))
@@ -107,11 +118,22 @@ def render_markdown(
         f"compuesto: {doc.compuesto}",
         f"organismos: {[_una_linea(o) for o in doc.organismos]!r}",
         f"fecha_publicacion_original: {doc.fecha_publicacion}",
+        # Hoy los 16 documentos que seguimos están vigentes, pero el dato se
+        # registra igual: si alguno se deroga, el archivo lo dirá solo.
+        f"derogada: {'true' if doc.derogado else 'false'}",
+        *([f"fecha_derogacion: {doc.fecha_derogacion}"] if doc.fecha_derogacion else []),
         "---",
         "",
-        f"# {doc.titulo_norma}",
+        f"# {_una_linea(doc.titulo_norma)}",
         "",
     ]
+    if doc.derogado:
+        cuando = f" el {doc.fecha_derogacion}" if doc.fecha_derogacion else ""
+        front_matter += [
+            f"> **NORMA DEROGADA{cuando}.** El texto que sigue es el que tuvo mientras "
+            "estuvo vigente; se conserva por su valor histórico, pero ya no rige.",
+            "",
+        ]
 
     body: list[str] = []
     for block in doc.blocks:

@@ -128,6 +128,11 @@ class NormaDocument:
     fecha_publicacion: str
     blocks: list[Block]
     compuesto: str = ""  # p. ej. "LEY-19846", desde metadatos.tipos_numeros
+    # Si la norma completa fue derogada. BCN entrega este dato con el estado
+    # ACTUAL aunque se pida una versión antigua: la Ley 19.366, consultada en su
+    # fecha de publicación de 1995, ya viene marcada como derogada en 2005.
+    derogado: bool = False
+    fecha_derogacion: str = ""
 
 
 def _parse_block(raw: dict) -> Block:
@@ -149,4 +154,6 @@ def parse_norma_json(raw_json: bytes | str, *, id_norma: int, version_date: str)
         fecha_publicacion=metadatos.get("fecha_publicacion", ""),
         blocks=blocks,
         compuesto=tipos_numeros[0].get("compuesto", ""),
+        derogado=bool(metadatos.get("derogado")),
+        fecha_derogacion=metadatos.get("fecha_derogacion") or "",
     )
