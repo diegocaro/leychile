@@ -69,31 +69,69 @@ GET_NORMA_JSON_URL_TEMPLATE = (
 )
 
 
+@dataclass(frozen=True)
+class LineageLink:
+    """Un eslabón del linaje de un documento: una norma de BCN con su rango
+    propio de versiones."""
+
+    id_norma: int
+    nombre: str = ""
+
+
 @dataclass
 class Target:
-    """Norma que seguimos: nombre de archivo en `leyes/` y su idNorma en BCN."""
+    """Documento que seguimos: un archivo en `leyes/` construido a partir de
+    uno o más eslabones.
+
+    La mayoría de los documentos tiene un solo eslabón. La Constitución tiene
+    cuatro, porque BCN no modela la historia constitucional como una sola
+    norma sino como una cadena de normas distintas (ver
+    `discover.CONSTITUCION_LINAJE`): seguir sólo la última dejaría la historia
+    empezando en el texto refundido de 2005.
+    """
 
     slug: str
-    id_norma: int
+    links: list[LineageLink]
+
+    @property
+    def tiene_linaje(self) -> bool:
+        return len(self.links) > 1
 
 
 @dataclass
 class CommitEvent:
-    """Un commit por hacer: una norma en una de sus versiones históricas."""
+    """Un commit por hacer: un documento en una de sus versiones históricas.
+
+    `link` indica de qué norma de BCN sale este texto, que en un documento con
+    linaje no es siempre la misma.
+    """
 
     target: Target
+    link: LineageLink
     version: VersionEvent
 
     @property
     def key(self) -> str:
         """Identificador estable del evento, usado en `state.json` para saber
         qué ya se commiteó y poder reanudar."""
-        return f"{self.target.id_norma}:{self.version.vigente_desde.isoformat()}"
+        return f"{self.link.id_norma}:{self.version.vigente_desde.isoformat()}"
 
 
 def load_targets() -> list[Target]:
+    """Lee `targets.yaml`, que acepta dos formas por entrada: `id_norma` para
+    un documento simple, o `linaje` para uno encadenado."""
     raw = yaml.safe_load(TARGETS_FILE.read_text())
-    return [Target(slug=t["slug"], id_norma=int(t["id_norma"])) for t in raw]
+    targets: list[Target] = []
+    for t in raw:
+        if t.get("linaje"):
+            links = [
+                LineageLink(id_norma=int(e["id_norma"]), nombre=e.get("nombre", ""))
+                for e in t["linaje"]
+            ]
+        else:
+            links = [LineageLink(id_norma=int(t["id_norma"]))]
+        targets.append(Target(slug=t["slug"], links=links))
+    return targets
 
 
 def load_state() -> set[str]:
@@ -116,14 +154,21 @@ def build_commit_message(
     *,
     date_clamped: bool,
     co_authors: list[Author],
+    inicio_de_eslabon: LineageLink | None = None,
 ) -> str:
     """Mensaje del commit: qué cambió, cuándo rigió y de qué URL de BCN salió.
 
     El cuerpo siempre cita la fuente exacta para que el commit sea auditable, y
     termina con las líneas `Co-authored-by:` que GitHub usa para mostrar a
     todos los autores y firmantes.
+
+    `inicio_de_eslabon` se pasa cuando este commit estrena un eslabón del
+    linaje, para advertir que el diff gigante es un cambio de cuerpo legal y no
+    una reforma puntual.
     """
-    if version.is_original:
+    if inicio_de_eslabon is not None:
+        header = f"Inicia {inicio_de_eslabon.nombre or titulo_norma}"
+    elif version.is_original:
         header = f"Publicación original: {titulo_norma}"
     elif version.is_unknown_cause:
         header = f"Nueva versión de {titulo_norma} (norma modificatoria no registrada por BCN)"
@@ -133,6 +178,12 @@ def build_commit_message(
     lines = [header, "", f"Fecha de vigencia: {version.vigente_desde.isoformat()}", f"Fuente: {source_url}"]
     for m in version.modificatorias:
         lines.append(f"Norma modificatoria: https://www.leychile.cl/Navegar?idNorma={m.id_norma}")
+    if inicio_de_eslabon is not None:
+        lines.append(
+            "\nNota: este commit estrena un nuevo cuerpo legal dentro del linaje del "
+            "documento, así que el diff refleja el reemplazo completo del texto anterior "
+            "y no una reforma puntual."
+        )
     if date_clamped:
         lines.append(
             "Nota: fecha de commit git sintética (git no admite fechas anteriores a "
@@ -178,14 +229,21 @@ def _fetch_norma_doc(client: BcnClient, id_norma: int, version_date: str) -> Nor
     return parse_norma_json(result.content, id_norma=id_norma, version_date=version_date)
 
 
-def commit_event(client: BcnClient, event: CommitEvent, commit_dt: str) -> None:
-    """Descarga, renderiza y commitea una versión de una norma."""
-    target, version = event.target, event.version
+def commit_event(
+    client: BcnClient, event: CommitEvent, commit_dt: str, *, inicio_de_eslabon: LineageLink | None = None
+) -> None:
+    """Descarga, renderiza y commitea una versión de un documento.
+
+    El texto se pide siempre a `event.link.id_norma`, que en un documento con
+    linaje no coincide con "la norma del target": va cambiando de eslabón a
+    medida que avanza la historia.
+    """
+    target, version, link = event.target, event.version, event.link
     url = GET_NORMA_JSON_URL_TEMPLATE.format(
-        id_norma=target.id_norma, version_date=version.vigente_desde.isoformat()
+        id_norma=link.id_norma, version_date=version.vigente_desde.isoformat()
     )
     result = client.get(url)
-    doc = parse_norma_json(result.content, id_norma=target.id_norma, version_date=version.vigente_desde.isoformat())
+    doc = parse_norma_json(result.content, id_norma=link.id_norma, version_date=version.vigente_desde.isoformat())
     markdown = render_markdown(doc, source_url=url, fetched_at=result.fetched_at)
 
     LAWS_DIR.mkdir(parents=True, exist_ok=True)
@@ -196,7 +254,7 @@ def commit_event(client: BcnClient, event: CommitEvent, commit_dt: str) -> None:
     if version.is_original:
         # El propio documento ya trae su Promulgación (la firma de su
         # publicación original), así que no hace falta descargar nada más.
-        resolved = resolve_authors(client, id_norma=target.id_norma, organismo=organismo, promulgacion_doc=doc)
+        resolved = resolve_authors(client, id_norma=link.id_norma, organismo=organismo, promulgacion_doc=doc)
     elif version.is_unknown_cause:
         # BCN no registra qué norma causó esta transición: no hay id_norma que
         # consultar para autores ni firmantes, así que no se puede ser más
@@ -216,7 +274,12 @@ def commit_event(client: BcnClient, event: CommitEvent, commit_dt: str) -> None:
 
     date_clamped = version.vigente_desde < GIT_EPOCH
     message = build_commit_message(
-        version, url, doc.titulo_norma, date_clamped=date_clamped, co_authors=resolved.co_authors
+        version,
+        url,
+        doc.titulo_norma,
+        date_clamped=date_clamped,
+        co_authors=resolved.co_authors,
+        inicio_de_eslabon=inicio_de_eslabon,
     )
 
     author = resolved.primary
@@ -252,12 +315,30 @@ def main() -> None:
     # ir commiteando norma por norma a medida que se descargan.
     all_events: list[CommitEvent] = []
     for target in targets:
-        timeline = fetch_version_timeline(client, target.id_norma)
-        for version in timeline:
-            all_events.append(CommitEvent(target=target, version=version))
+        for link in target.links:
+            timeline = fetch_version_timeline(client, link.id_norma)
+            for version in timeline:
+                all_events.append(CommitEvent(target=target, link=link, version=version))
 
     all_events.sort(key=lambda e: (e.version.vigente_desde, e.target.slug))
     commit_datetimes = assign_commit_datetimes(all_events)
+
+    # En documentos con linaje, marcamos el primer evento de cada eslabón (salvo
+    # el más antiguo) para que su commit advierta que el diff es un cambio de
+    # cuerpo legal completo. Se calcula sobre la lista ya ordenada, así que
+    # refleja el orden cronológico real.
+    inicios_de_eslabon: dict[str, LineageLink] = {}
+    for target in targets:
+        if not target.tiene_linaje:
+            continue
+        eventos_del_target = [e for e in all_events if e.target is target]
+        eslabones_vistos: set[int] = set()
+        for evento in eventos_del_target:
+            if evento.link.id_norma in eslabones_vistos:
+                continue
+            eslabones_vistos.add(evento.link.id_norma)
+            if len(eslabones_vistos) > 1:  # el primero es el inicio natural, no un salto
+                inicios_de_eslabon[evento.key] = evento.link
 
     committed_this_run = 0
     failed: list[str] = []
@@ -266,7 +347,12 @@ def main() -> None:
             continue
         print(f"Commiteando {event.key} ({event.target.slug})...", file=sys.stderr)
         try:
-            commit_event(client, event, commit_datetimes[event.key])
+            commit_event(
+                client,
+                event,
+                commit_datetimes[event.key],
+                inicio_de_eslabon=inicios_de_eslabon.get(event.key),
+            )
         except Exception as exc:  # noqa: BLE001 - un evento malo no puede matar un recorrido de días
             print(f"  FALLÓ {event.key}: {exc!r} (se reintentará en la próxima corrida)", file=sys.stderr)
             failed.append(event.key)

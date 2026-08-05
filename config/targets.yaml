@@ -1,6 +1,14 @@
 - slug: constitucion-politica-de-la-republica-de-chile
-  id_norma: 242302
   note: Constitución Política de la República de Chile
+  linaje:
+  - id_norma: 137535
+    nombre: Constitución de 1833
+  - id_norma: 241203
+    nombre: Constitución de 1925 (DTO 1333, fija su texto)
+  - id_norma: 7129
+    nombre: Constitución de 1980 (DL 3464)
+  - id_norma: 242302
+    nombre: Texto refundido de 2005 (DTO 100)
 - slug: codigo-civil
   id_norma: 172986
   note: Código Civil

@@ -76,7 +76,11 @@ class Modificatoria:
     tipo_norma: str
     titulo: str
     organismo: str
-    fecha_publicacion: date
+    # En normas antiguas BCN a veces no tiene la fecha de publicación (viene
+    # None o ""); p. ej. en las reformas a la Constitución de 1833 y en dos
+    # modificatorias del DL 3464. `inicio_vigencia` sí está siempre, y es la
+    # que usamos para fechar los commits.
+    fecha_publicacion: date | None
     inicio_vigencia: date
 
 
@@ -134,26 +138,38 @@ def _parse_bcn_date(value: str) -> date:
 
 
 def _parse_modificatoria(raw: dict) -> Modificatoria:
+    fecha_publicacion = raw.get("@fechaPublicacion")
     return Modificatoria(
         id_norma=int(raw["@idNorma"]),
         nro_norma=raw.get("@nroNorma") or "S/N",
         tipo_norma=raw.get("@tipoNorma", ""),
         titulo=raw.get("@titulo", ""),
         organismo=raw.get("@organismo", ""),
-        fecha_publicacion=_parse_bcn_date(raw["@fechaPublicacion"]),
+        fecha_publicacion=_parse_bcn_date(fecha_publicacion) if fecha_publicacion else None,
         inicio_vigencia=_parse_bcn_date(raw["@inicioVigencia"]),
     )
 
 
 def _extract_modificatorias(version_raw: dict) -> tuple[Modificatoria, ...]:
-    """`Modificatoria` viene como dict si es una sola, y como lista si son varias."""
+    """`Modificatoria` viene como dict si es una sola, y como lista si son varias.
+
+    Se descartan las entradas marcador: BCN a veces registra que hubo una
+    modificación pero sin saber cuál norma la produjo, y en ese caso emite un
+    bloque con `@idNorma: 0` y todo lo demás en null (verificado en vivo en el
+    DL 3464, versiones de 2000-04-29 y 2003-05-22).
+
+    Filtrarlas acá hace que la versión quede marcada como `is_unknown_cause`,
+    que es exactamente lo que es. Si se dejaran pasar, el pipeline intentaría
+    descargar la "norma 0", recibiría un HTTP 500 y perdería varios minutos
+    reintentando con backoff antes de rendirse.
+    """
     block = version_raw.get("Modificatorias")
     if not block:
         return ()
     raw_mods = block["Modificatoria"]
-    if isinstance(raw_mods, list):
-        return tuple(_parse_modificatoria(m) for m in raw_mods)
-    return (_parse_modificatoria(raw_mods),)
+    if not isinstance(raw_mods, list):
+        raw_mods = [raw_mods]
+    return tuple(_parse_modificatoria(m) for m in raw_mods if int(m.get("@idNorma") or 0) > 0)
 
 
 def fetch_version_timeline(client: BcnClient, id_norma: int) -> list[VersionEvent]:

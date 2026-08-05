@@ -34,8 +34,34 @@ BUSCAR_URL_TEMPLATE = "https://nuevo.leychile.cl/servicios/buscarjson?cadena={qu
 # getCodigos no devuelve la Constitución (no es un "Código"), así que se
 # resolvió aparte y queda fijada acá una vez verificada en vivo. Ver el
 # docstring del módulo para el detalle de cómo se comprobó.
-CONSTITUCION_ID_NORMA = 242302
 CONSTITUCION_TITULO = "Constitución Política de la República de Chile"
+CONSTITUCION_SLUG = "constitucion-politica-de-la-republica-de-chile"
+
+# BCN no modela la historia constitucional chilena como una sola norma, sino
+# como una cadena de normas distintas: cada nuevo texto constitucional (y cada
+# decreto que "fija el texto") tiene su propio idNorma con su propia línea de
+# tiempo. Seguir sólo la última (el texto refundido de 2005) deja fuera todo lo
+# anterior a esa fecha.
+#
+# Este linaje reconstruye la historia completa. Cada eslabón fue verificado en
+# vivo (2026-08-04) contra `get_versiones`, y los rangos son los que BCN
+# efectivamente tiene con texto versionado:
+#
+#   137535  1833-05-25 -> 1888-08-10   8 versiones
+#   241203  1971-10-25 -> 1977-03-12  13 versiones
+#     7129  1980-08-11 -> 2005-08-26  21 versiones
+#   242302  2005-09-22 -> presente    58 versiones
+#
+# Advertencia sobre la cobertura: BCN no tiene texto versionado para todo el
+# período. Quedan huecos entre 1888 y 1971 (la Constitución de 1925 sólo
+# aparece versionada desde 1971) y entre 1977 y 1980. No es un error del
+# pipeline: es hasta donde llega la fuente.
+CONSTITUCION_LINAJE = [
+    {"id_norma": 137535, "nombre": "Constitución de 1833"},
+    {"id_norma": 241203, "nombre": "Constitución de 1925 (DTO 1333, fija su texto)"},
+    {"id_norma": 7129, "nombre": "Constitución de 1980 (DL 3464)"},
+    {"id_norma": 242302, "nombre": "Texto refundido de 2005 (DTO 100)"},
+]
 
 
 @dataclass(frozen=True)
@@ -79,11 +105,23 @@ def search_norma(client: BcnClient, query: str, *, limit: int = 10) -> list[dict
     return data[0] if data else []
 
 
-def build_target_list(client: BcnClient) -> list[DiscoveredTarget]:
-    """El corpus completo: la Constitución más todos los Códigos oficiales."""
-    targets = [DiscoveredTarget(slug=_slugify(CONSTITUCION_TITULO), id_norma=CONSTITUCION_ID_NORMA, titulo=CONSTITUCION_TITULO)]
-    targets.extend(fetch_codigos(client))
-    return targets
+def build_targets_yaml(client: BcnClient) -> list[dict]:
+    """El corpus completo, en la forma que espera `config/targets.yaml`.
+
+    La Constitución se escribe como un `linaje` (varias normas encadenadas en
+    un solo archivo); los Códigos, como una sola `id_norma` cada uno.
+    """
+    entries: list[dict] = [
+        {
+            "slug": CONSTITUCION_SLUG,
+            "note": CONSTITUCION_TITULO,
+            "linaje": CONSTITUCION_LINAJE,
+        }
+    ]
+    entries.extend(
+        {"slug": t.slug, "id_norma": t.id_norma, "note": t.titulo} for t in fetch_codigos(client)
+    )
+    return entries
 
 
 def main() -> None:
@@ -92,10 +130,9 @@ def main() -> None:
     from .build_repo import TARGETS_FILE
 
     client = BcnClient()
-    targets = build_target_list(client)
-    raw = [{"slug": t.slug, "id_norma": t.id_norma, "note": t.titulo} for t in targets]
-    TARGETS_FILE.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False))
-    print(f"Se escribieron {len(targets)} normas en {TARGETS_FILE}")
+    entries = build_targets_yaml(client)
+    TARGETS_FILE.write_text(yaml.safe_dump(entries, allow_unicode=True, sort_keys=False))
+    print(f"Se escribieron {len(entries)} normas en {TARGETS_FILE}")
 
 
 if __name__ == "__main__":
