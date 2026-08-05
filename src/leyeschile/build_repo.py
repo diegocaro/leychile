@@ -273,40 +273,64 @@ def build_commit_message(
             return ruta.stem
         return ruta_de_norma(m, describir(catalogo, m.tipo_norma)).stem
 
+    # Asunto: "[IDENTIFICADOR] AAAA-MM-DD: título".
+    #
+    # El identificador y el título son los de la NORMA MODIFICATORIA, no los del
+    # documento afectado: cuál documento cambió ya se ve en el diff, y su título
+    # sería idéntico en todos sus commits, mientras que el de la norma dice qué
+    # hizo esa reforma en particular.
+    #
+    # La fecha va en el asunto porque la de git no sirve para orientarse: todo
+    # lo anterior a 1970 aparece como 1970-01-01 (ver GIT_EPOCH), justo el tramo
+    # más difícil de seguir.
     if inicio_de_eslabon is not None:
-        header = f"Inicia {inicio_de_eslabon.nombre or titulo_norma}"
+        identificador = "LINAJE"
+        titulo = inicio_de_eslabon.nombre or titulo_norma
     elif version.is_original:
-        header = f"Publicación original: {titulo_norma}"
+        identificador = "ORIGINAL"
+        titulo = titulo_norma
     elif version.is_unknown_cause:
-        header = f"Nueva versión de {titulo_norma} (norma modificatoria no registrada por BCN)"
+        # Sin norma registrada no hay identificador ni título propio: se usa el
+        # del documento, que es lo único que se sabe.
+        identificador = "SIN-REGISTRO"
+        titulo = titulo_norma
     else:
-        principal = version.modificatorias[0]
-        verbo = verbo_para(principal.tipo_norma)
-        desc = "; ".join(_describe(m) for m in version.modificatorias)
-        header = f"{desc} {verbo} {titulo_norma}"
+        # Cuando varias normas rigen desde la misma fecha, el asunto nombra a la
+        # más relevante y no a la que BCN listó primero. Se usa el campo `otro`
+        # de su propio catálogo, que separa normas principales (ley, decreto,
+        # DFL, decreto ley) de instrumentos accesorios (rectificación, aviso,
+        # auto acordado, sentencia).
+        #
+        # Sin esto, el 1999-09-17 el asunto decía "RECTIFICACIÓN" —que no
+        # informa nada— en vez de la Ley 19.617, que fue la que modificó el
+        # Código Penal ese día.
+        ordenadas = sorted(
+            version.modificatorias, key=lambda m: not describir(catalogo, m.tipo_norma).principal
+        )
+        principal = ordenadas[0]
+        identificador = _nombre_archivo(principal)
+        if len(ordenadas) > 1:
+            identificador = f"{identificador} +{len(ordenadas) - 1}"
+        titulo = " ".join((principal.titulo or "").split()) or titulo_norma
 
-    # Archivos tocados por este commit, al final del asunto: primero la(s)
-    # norma(s) modificatoria(s) y luego el documento afectado. Con muchas
-    # modificatorias se nombra la primera y se cuentan las demás, que igual
-    # quedan detalladas en el cuerpo.
-    nombres = [_nombre_archivo(m) for m in version.modificatorias]
-    if len(nombres) > 2:
-        nombres = [nombres[0], f"+{len(nombres) - 1} normas"]
-    partes = nombres + [str(ruta_documento)]
-    header = f"{header} [{' -> '.join(partes)}]"
+    header = f"[{identificador}] {version.vigente_desde.isoformat()}: {titulo}"
 
-    # La fecha real de vigencia va al principio del asunto porque la fecha de
-    # git no sirve para orientarse: todo lo anterior a 1970 aparece como
-    # 1970-01-01 (ver GIT_EPOCH), que es justamente el tramo más difícil de
-    # seguir. Con el prefijo, `git log --oneline` muestra la cronología
-    # verdadera aunque git no pueda representarla en sus propias fechas.
-    header = f"{version.vigente_desde.isoformat()} {header}"
-
-    lines = [header, "", f"Fecha de vigencia: {version.vigente_desde.isoformat()}", f"Fuente: {source_url}"]
+    lines = [
+        header,
+        "",
+        f"Documento: {ruta_documento}",
+        f"Fecha de vigencia: {version.vigente_desde.isoformat()}",
+        f"Fuente: {source_url}",
+    ]
     for m in version.modificatorias:
         tipo = describir(catalogo, m.tipo_norma)
         lines.append("")
-        lines.append(f"{_describe(m)} ({tipo.abbr}) — {m.organismo or 'organismo no registrado'}")
+        # El verbo distingue qué hizo realmente esta norma: una sentencia del
+        # Tribunal Constitucional deroga, una rectificación corrige una errata.
+        lines.append(
+            f"{_describe(m)} ({tipo.abbr}) {verbo_para(m.tipo_norma)} el documento "
+            f"— {m.organismo or 'organismo no registrado'}"
+        )
         if m.titulo:
             lines.append(f"  {' '.join(m.titulo.split())}")
         ruta = rutas_normas.get(m.id_norma)
