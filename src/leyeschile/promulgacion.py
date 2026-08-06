@@ -28,7 +28,10 @@ from dataclasses import dataclass
 
 from .norma_json import Block, NormaDocument
 
-_NAME_WORD = r"[A-ZÁÉÍÓÚÑÜ][\wÁÉÍÓÚÑÜáéíóúñü.]*"
+# El guion es parte del nombre: sin él, los apellidos compuestos no matchean y
+# la firma se descarta entera y en silencio. Así se perdía a EDUARDO FREI
+# RUIZ-TAGLE en todas sus leyes, y a ministros como Andrés Gómez-Lobo.
+_NAME_WORD = r"[A-ZÁÉÍÓÚÑÜ][\wÁÉÍÓÚÑÜáéíóúñü.\-]*"
 SIGNER_SEGMENT_RE = re.compile(rf"^\s*((?:{_NAME_WORD}\s+){{1,4}}{_NAME_WORD})\s*,\s*(.+?)\s*$")
 
 PROMULGACION_MARKER_RE = re.compile(
