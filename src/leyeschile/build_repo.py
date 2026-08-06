@@ -426,6 +426,20 @@ def _guardar_norma(
         url = GET_NORMA_JSON_URL_TEMPLATE.format(id_norma=mod.id_norma, version_date=fecha_texto)
         result = client.get(url)
         doc = parse_norma_json(result.content, id_norma=mod.id_norma, version_date=fecha_texto)
+
+        # Una norma publicada con vacancia legal existe en el Diario Oficial
+        # antes de regir, pero BCN sólo tiene su texto desde la primera ventana
+        # de vigencia: pedirla en su fecha de publicación devuelve un documento
+        # vacío. Pasaba en 57 de las 714 normas del corpus (la Ley 21.759 se
+        # publicó el 2025-08-09 y su texto sólo existe desde el 2026-03-02).
+        #
+        # La respuesta vacía sí trae `metadatos.vigencias`, así que se reintenta
+        # con la ventana más antigua, que es el texto original de la norma.
+        if doc.sin_texto and doc.vigencias:
+            fecha_texto = min(doc.vigencias)
+            url = GET_NORMA_JSON_URL_TEMPLATE.format(id_norma=mod.id_norma, version_date=fecha_texto)
+            result = client.get(url)
+            doc = parse_norma_json(result.content, id_norma=mod.id_norma, version_date=fecha_texto)
     except Exception:  # noqa: BLE001 - ver docstring
         return None, None
 

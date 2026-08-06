@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 
 BLOCK_TAGS = {"div", "p", "br", "li", "tr"}
@@ -133,6 +133,21 @@ class NormaDocument:
     # fecha de publicación de 1995, ya viene marcada como derogada en 2005.
     derogado: bool = False
     fecha_derogacion: str = ""
+    # Ventanas de vigencia propias de esta norma, de la más nueva a la más
+    # antigua, tal como las entrega BCN en metadatos.vigencias. Vienen incluso
+    # cuando la respuesta no trae texto, así que sirven para saber con qué fecha
+    # habría que volver a pedirla (ver `sin_texto`).
+    vigencias: list[str] = field(default_factory=list)
+
+    @property
+    def sin_texto(self) -> bool:
+        """Si BCN no devolvió contenido para la fecha pedida.
+
+        Pasa cuando se pide una norma en una fecha anterior a su primera
+        ventana de vigencia: una ley publicada con vacancia legal existe en el
+        Diario Oficial pero su texto sólo aparece desde que empieza a regir.
+        """
+        return not any(b.text for b in self.blocks)
 
 
 def _parse_block(raw: dict) -> Block:
@@ -156,4 +171,5 @@ def parse_norma_json(raw_json: bytes | str, *, id_norma: int, version_date: str)
         compuesto=tipos_numeros[0].get("compuesto", ""),
         derogado=bool(metadatos.get("derogado")),
         fecha_derogacion=metadatos.get("fecha_derogacion") or "",
+        vigencias=[v["desde"] for v in (metadatos.get("vigencias") or []) if v.get("desde")],
     )

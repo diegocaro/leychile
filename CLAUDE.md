@@ -7,6 +7,37 @@ docstrings y documentación en español; los identificadores del código
 (nombres de funciones, clases y variables) están en inglés/híbrido y se
 mantienen así.
 
+## Regla principal: comprobar, no deducir
+
+**Toda explicación sobre el comportamiento de los datos debe verificarse contra
+BCN antes de afirmarla o de escribirla en el código.** No basta con que una
+hipótesis sea plausible y calce con lo observado.
+
+Cómo comprobar, de más barato a más caro:
+
+1. Consultar el endpoint directamente y mirar la respuesta cruda.
+2. Contrastar con otra fuente de BCN: `get_versiones`, `getTiposNorma`,
+   `metadatos` de `get_norma_json`.
+3. **Abrir la ficha de la norma en el sitio web**, que es la fuente de verdad
+   visible y muestra fechas, versiones y estructura:
+   `https://www.bcn.cl/leychile/navegar?idNorma=<id>`
+
+Si algo no se pudo comprobar, decirlo explícitamente ("no verificado") en vez
+de presentarlo como hecho.
+
+Esta regla existe porque deducir sin comprobar ya produjo errores reales:
+
+- Al derivar la lista de presidentes desde el corpus faltaba Frei Ruiz-Tagle.
+  Se explicó como que "sus ministros firmaban como vicepresidentes" —plausible
+  y con un dato que parecía apoyarlo— y se dio por cerrado. La causa real era
+  un bug: la expresión regular de firmantes no aceptaba guiones, así que
+  descartaba en silencio todo apellido compuesto. Frei desaparecía de las 39
+  normas que firmó.
+- La explicación de por qué una norma volvía sin texto (vacancia legal) se
+  escribió como hecho antes de comprobarla. Resultó correcta, pero eso no se
+  sabía al afirmarla; la ficha de BCN lo confirmó después ("Publicación:
+  09-AGO-2025, Versión: Única - 02-MAR-2026").
+
 ## Qué es esto
 
 Un pipeline que construye la historia git de la legislación chilena (la
