@@ -177,10 +177,13 @@ def ruta_de_norma(mod: Modificatoria, tipo: TipoNorma) -> Path:
     - Numeración correlativa nacional (LEY, DL): `LEY-21522.md`. El número basta.
     - Numeración que se reinicia cada año (DFL, AA, DTO...): `DFL-1995-0001.md`,
       con el año por delante.
-    - Normas sin número ("S/N", 27 en el corpus: leyes del siglo XIX, autos
-      acordados antiguos, sentencias y avisos): `LEY-1874-SN-131717.md`. Acá ni
-      el año alcanza —hay tres leyes S/N de 1874—, así que se agrega el
-      `idNorma`, que es el identificador único de BCN.
+    - Normas sin número ("S/N", 28 en el corpus: leyes del siglo XIX, autos
+      acordados antiguos, sentencias y avisos): `LEY-SN-1874-08-13-131717.md`.
+      El `SN` va inmediatamente después del tipo para que no quede nada en la
+      posición del número: `LEY-1874-...` se leía como "Ley 1874", que además
+      existe como número real. Después va la fecha completa y al final el
+      `idNorma`, porque ni siquiera la fecha desempata: el 13 de agosto de 1874
+      se publicaron dos leyes sin número (131717 y 131718).
 
     Ver `TIPOS_NUMERACION_CORRELATIVA` para por qué la distinción es de fondo y
     no un accidente del corpus actual.
@@ -199,9 +202,10 @@ def ruta_de_norma(mod: Modificatoria, tipo: TipoNorma) -> Path:
       esas magnitudes.
     """
     numero_crudo = str(mod.nro_norma).strip()
-    anio = (mod.fecha_publicacion or mod.inicio_vigencia).year
+    fecha = mod.fecha_publicacion or mod.inicio_vigencia
+    anio = fecha.year
     if not numero_crudo.isdigit():
-        return NORMAS_DIR / tipo.slug / f"{tipo.abbr}-{anio}-SN-{mod.id_norma}.md"
+        return NORMAS_DIR / tipo.slug / f"{tipo.abbr}-SN-{fecha.isoformat()}-{mod.id_norma}.md"
     numero = int(numero_crudo)
     if tipo.abbr in TIPOS_NUMERACION_CORRELATIVA:
         return NORMAS_DIR / tipo.slug / f"{tipo.abbr}-{numero:05d}.md"
@@ -262,9 +266,15 @@ def build_commit_message(
     titulo_norma = " ".join((titulo_norma or "").split())
 
     def _describe(m: Modificatoria) -> str:
+        """Nombre legible de la norma: "Ley 18750", "Auto Acordado 21".
+
+        Las normas sin número lo dicen explícitamente. Antes quedaban sólo como
+        "Ley", que no distingue nada: hay 27 en el corpus, ocho de ellas leyes.
+        """
         tipo = describir(catalogo, m.tipo_norma)
-        numero = "" if str(m.nro_norma) == "S/N" else f" {m.nro_norma}"
-        return f"{tipo.nombre}{numero}"
+        if str(m.nro_norma) == "S/N":
+            return f"{tipo.nombre} sin número"
+        return f"{tipo.nombre} {m.nro_norma}"
 
     def _nombre_archivo(m: Modificatoria) -> str:
         """Identificador corto de la norma: el nombre de su archivo sin `.md`."""
@@ -323,12 +333,13 @@ def build_commit_message(
         f"Fuente: {source_url}",
     ]
     for m in version.modificatorias:
-        tipo = describir(catalogo, m.tipo_norma)
         lines.append("")
         # El verbo distingue qué hizo realmente esta norma: una sentencia del
         # Tribunal Constitucional deroga, una rectificación corrige una errata.
+        # No se repite la sigla del tipo: el nombre ya la dice ("Ley (LEY)") y
+        # además va en el identificador del archivo, más abajo.
         lines.append(
-            f"{_describe(m)} ({tipo.abbr}) {verbo_para(m.tipo_norma)} el documento "
+            f"{_describe(m)} {verbo_para(m.tipo_norma)} el documento "
             f"— {m.organismo or 'organismo no registrado'}"
         )
         if m.titulo:
