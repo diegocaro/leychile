@@ -133,11 +133,19 @@ def autores_sin_registro() -> ResolvedAuthors:
 def resolve_authors(
     client: BcnClient, *, id_norma: int, organismo: str, promulgacion_doc: NormaDocument | None
 ) -> ResolvedAuthors:
-    """Autoría del commit según la prioridad descrita en el docstring del módulo."""
+    """Autoría del commit según la prioridad descrita en el docstring del módulo.
+
+    Se acreditan **todos** los firmantes de la promulgación, no sólo el jefe de
+    Estado y un ministro. Las leyes de 1973-1990 las firmaban además los cuatro
+    miembros de la Junta de Gobierno, y muchas leyes son refrendadas por varios
+    ministros: quedarse con dos dejaba fuera a la mayoría. En la Ley 18.750, por
+    ejemplo, se extraían seis firmantes y sólo se acreditaban dos.
+    """
     named = fetch_named_authors(client, id_norma)
     signers = extract_signers(promulgacion_doc) if promulgacion_doc is not None else []
     pres = primary_signer(signers)
-    minister = minister_signer(signers, exclude=pres)
+    # El resto de los firmantes, en el orden en que aparecen en el documento.
+    otros_firmantes = [s for s in signers if s is not pres]
 
     co_authors: list[Author] = []
 
@@ -147,12 +155,10 @@ def resolve_authors(
             co_authors.append(_author_from_name(extra_name, rol=ROL_AUTOR_MOCION))
         if pres is not None:
             co_authors.append(_author_from_signer(pres))
-        if minister is not None:
-            co_authors.append(_author_from_signer(minister))
+        co_authors.extend(_author_from_signer(s) for s in otros_firmantes)
     elif pres is not None:
         primary = _author_from_signer(pres)
-        if minister is not None:
-            co_authors.append(_author_from_signer(minister))
+        co_authors.extend(_author_from_signer(s) for s in otros_firmantes)
     else:
         organismo_clean = organismo.strip() or "Congreso Nacional de Chile"
         primary = _author_from_name(organismo_clean.title(), rol=ROL_ORGANISMO)
