@@ -16,8 +16,25 @@ Prioridad: si hay parlamentarios autores, el primero es el autor principal del
 commit, porque "quién la escribió" es el crédito más específico; los firmantes
 de la promulgación se agregan como líneas `Co-authored-by:`. Si no hay autores
 con nombre, el firmante principal de la promulgación (Presidente/Junta) pasa a
-ser el autor principal y el ministro queda como coautor. Si ninguna fuente
-tiene datos, se cae al `organismo` emisor.
+ser el autor principal y el resto de los firmantes quedan como coautores. Si
+ninguna fuente tiene datos, se cae al `organismo` emisor.
+
+Dos limitaciones conocidas de este esquema, asumidas a propósito:
+
+- **El orden de los autores parlamentarios es el de BCN y no implica
+  jerarquía.** Se comprobó que no es alfabético ni por identificador, y su
+  criterio no está documentado. Elegir al primero como autor principal es, en
+  estricto rigor, arbitrario: los demás quedan igualmente acreditados como
+  coautores y en la sección Participantes del commit.
+- **El campo `Author` de git mezcla dos roles.** En una ley de moción es quien
+  la escribió; en las demás, quien la firmó. Se aceptó porque ver a las
+  personas en `git log` es lo que hace legible esta historia, pero implica que
+  contar commits por autor no compara lo mismo: un Presidente acumula cientos
+  por firmar y un redactor suma uno.
+
+Las alternativas evaluadas —usar siempre al firmante, o poner la norma misma
+como autor— eliminan la arbitrariedad pero pierden el rostro humano en el log,
+que es el mayor valor del repositorio.
 
 Git exige un par "Nombre <email>" para el autor. No existe un correo público
 real para legisladores y autoridades históricas, así que se usa una dirección
