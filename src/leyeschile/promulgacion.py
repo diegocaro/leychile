@@ -32,7 +32,14 @@ from .norma_json import Block, NormaDocument
 # la firma se descarta entera y en silencio. Así se perdía a EDUARDO FREI
 # RUIZ-TAGLE en todas sus leyes, y a ministros como Andrés Gómez-Lobo.
 _NAME_WORD = r"[A-ZÁÉÍÓÚÑÜ][\wÁÉÍÓÚÑÜáéíóúñü.\-]*"
-SIGNER_SEGMENT_RE = re.compile(rf"^\s*((?:{_NAME_WORD}\s+){{1,4}}{_NAME_WORD})\s*,\s*(.+?)\s*$")
+# Partículas de apellido en minúscula: sin esto, el mismo problema del guion se
+# repite con cualquier firmante cuyo apellido lleve una de estas palabras. Se
+# perdía por completo, p. ej., a Esteban Valenzuela VAN TREEK (Ministro de
+# Agricultura, en al menos 6 leyes) y a Ramón DE LA Cavareda (Ministro de
+# Guerra i Marina, en la promulgación original de la Constitución de 1833).
+_NAME_PARTICLE = r"(?:de|del|la|las|los|van|von|der|den|dos|das|du)"
+_NAME_ANY_WORD = rf"(?:{_NAME_WORD}|{_NAME_PARTICLE})"
+SIGNER_SEGMENT_RE = re.compile(rf"^\s*({_NAME_WORD}(?:\s+{_NAME_ANY_WORD}){{1,6}})\s*,\s*(.+?)\s*$")
 
 PROMULGACION_MARKER_RE = re.compile(
     r"ll[eé]vese a efecto|prom[uú]lguese|reg[ií]strese en la contralor[ií]a|"
@@ -93,6 +100,7 @@ def extract_signers(doc: NormaDocument) -> list[Signer]:
         text = text[: cut.start()]
 
     signers: list[Signer] = []
+    anchor_index: int | None = None
     for segment in text.split(".-"):
         segment = " ".join(segment.split())  # colapsa saltos de línea y espacios
         match = SIGNER_SEGMENT_RE.match(segment)
@@ -106,7 +114,26 @@ def extract_signers(doc: NormaDocument) -> list[Signer]:
             cut_at = role.find(". ")
             role = role[:cut_at] if 0 < cut_at <= ROLE_MAX_LEN else role[:ROLE_MAX_LEN]
         signers.append(Signer(name=name, role=role))
-    return signers
+        # Primera firma con investidura de jefe de Estado real (Presidente o
+        # Junta de Gobierno): marca dónde empieza la promulgación de verdad.
+        if anchor_index is None and (PRESIDENT_ROLE_RE.search(role) or JUNTA_ROLE_RE.search(role)):
+            anchor_index = len(signers) - 1
+
+    if anchor_index is None:
+        return signers
+
+    # En normas antiguas, el mismo bloque de texto a veces junta dos actos
+    # distintos: la ratificación de una sesión legislativa previa (firmada por
+    # su propio "Presidente" y "Secretario" de mesa, cargos que calzan con el
+    # mismo patrón "Nombre, Cargo" pero no son investidura real) y, después, la
+    # promulgación ejecutiva propiamente tal. Verificado en vivo en la
+    # Constitución de 1833 (idNorma=137535): el bloque trae primero la firma de
+    # "Santiago Echeverz, Presidente" y "Juan Francisco Meneses, Secretario" —
+    # de la sesión del Congreso Constituyente del 22 de mayo—, y sólo después
+    # la promulgación real de Joaquín Prieto del 25 de mayo. Todo lo anterior a
+    # la primera firma de Presidente de la República / Junta de Gobierno no es
+    # parte de la promulgación y se descarta.
+    return signers[anchor_index:]
 
 
 def primary_signer(signers: list[Signer]) -> Signer | None:
