@@ -95,7 +95,7 @@ wheels = [
 ]
 
 [[package]]
-name = "leyeschile"
+name = "leychile"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

@@ -14,7 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from leyeschile.client import BcnClient  # noqa: E402
+from leychile.client import BcnClient  # noqa: E402
 
 # Ley 19.846, "Calificación de la producción cinematográfica". Es el ejemplo
 # que usa la propia BCN en su documento accesoLeyesChilenas4.pdf, así que el

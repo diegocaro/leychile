@@ -85,11 +85,11 @@ Las dependencias se manejan con `uv`:
 uv sync                                    # crea el entorno e instala dependencias
 
 # (re)genera config/targets.yaml desde el catálogo oficial de BCN
-uv run python -m leyeschile.discover
+uv run python -m leychile.discover
 
 # construye o continúa la historia de commits en ../leychile-texto
 # es reanudable: se puede cortar (Ctrl-C / kill) y relanzar
-uv run python -m leyeschile.build_repo
+uv run python -m leychile.build_repo
 
 # sondear endpoints a mano contra una norma chica y conocida
 # (Ley 19.846, idNorma=206396) antes de confiar en un supuesto nuevo
@@ -103,7 +103,7 @@ una URL real (cacheada o en vivo).
 
 ## Arquitectura
 
-**Etapas del pipeline** (`src/leyeschile/`). Cada módulo tiene un docstring que
+**Etapas del pipeline** (`src/leychile/`). Cada módulo tiene un docstring que
 detalla el endpoint de BCN que usa y cómo se verificó su comportamiento contra
 datos reales. Lee ese docstring antes de tocar la lógica de parseo: varios de
 estos servicios se descubrieron por ingeniería inversa desde la web de

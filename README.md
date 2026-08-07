@@ -8,7 +8,7 @@ Congreso Nacional.
 
 Este repositorio contiene **sólo la herramienta**. El producto final —los
 `leyes/*.md` y la historia de commits que *es* su historia de modificaciones—
-se escribe en un repositorio vecino, `../leychile-texto-texto/` (constante
+se escribe en un repositorio vecino, `../leychile-texto/` (constante
 `DATA_REPO_ROOT` en `build_repo.py`), que debe existir y ser un repositorio git
 antes de ejecutar el pipeline. En *este* repositorio nunca vas a encontrar el
 texto de las leyes ni sus commits.
@@ -20,7 +20,7 @@ vigencia real, la ley que la modificó y quienes la firmaron. Así,
 
 ## Qué hay acá
 
-- `src/leyeschile/`: el pipeline. Cada módulo tiene un docstring que explica
+- `src/leychile/`: el pipeline. Cada módulo tiene un docstring que explica
   qué endpoint de BCN usa y cómo se verificó su comportamiento.
 - `config/targets.yaml`: las normas que se siguen (slug + `idNorma` de BCN),
   generado por `discover.py`.
@@ -28,7 +28,7 @@ vigencia real, la ley que la modificó y quienes la firmaron. Así,
   para siempre por URL. Reejecutar el pipeline nunca vuelve a pedir una URL ya
   descargada.
 - `state.json` (ignorado por git): punto de control para reanudar. Registra qué
-  pares `(idNorma, fecha de versión)` ya se commitearon **en `../leychile-texto-texto/`**.
+  pares `(idNorma, fecha de versión)` ya se commitearon **en `../leychile-texto/`**.
 
 ## Cómo ejecutarlo
 
@@ -41,11 +41,11 @@ uv sync                       # crea el entorno e instala dependencias
 mkdir -p ../leychile-texto && git -C ../leychile-texto init
 
 # (re)genera config/targets.yaml desde el catálogo oficial de BCN
-uv run python -m leyeschile.discover
+uv run python -m leychile.discover
 
 # construye o continúa la historia de commits en ../leychile-texto
 # se puede detener y relanzar cuando sea
-uv run python -m leyeschile.build_repo
+uv run python -m leychile.build_repo
 ```
 
 **BCN limita las peticiones de forma agresiva** (durante el desarrollo
@@ -111,7 +111,7 @@ como a quien la firmó:
 
 - **Parlamentarios autores**, desde `get_autores_de_la_ley`. Sólo existen para
   las leyes que nacieron como moción parlamentaria.
-- **Firmantes de la promulgación** (`src/leyeschile/promulgacion.py`),
+- **Firmantes de la promulgación** (`src/leychile/promulgacion.py`),
   extraídos del propio texto de la norma: toda norma termina con un bloque de
   firmas con el Presidente (o, en las normas de 1973-1990, la Junta de
   Gobierno) y un ministro. Por ejemplo, el cierre real del Código Aeronáutico:
