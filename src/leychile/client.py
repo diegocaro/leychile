@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE_DIR = Path("cache")
 DEFAULT_MIN_DELAY_SECONDS = 4.0
-DEFAULT_USER_AGENT = "leyes-chile-research/0.1 (+https://github.com; contacto ciudadano)"
+DEFAULT_USER_AGENT = "leychile-research/0.1 (+https://github.com; contacto ciudadano)"
 MAX_RETRIES = 6
 
 

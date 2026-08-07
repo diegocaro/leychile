@@ -19,10 +19,11 @@ que el script se puede detener y relanzar sin problema durante un recorrido
 largo y limitado por el rate limit de BCN.
 
 Dos repositorios separados, por decisión de diseño: este repositorio
-(leyes-chile) es sólo la herramienta (código, caché HTTP, state.json). El
-producto final —los `leyes/*.md` y su historia de commits— vive en el
-repositorio vecino `DATA_REPO_ROOT`, para poder publicar y compartir la historia
-legal de forma independiente del código que la genera.
+(leychile) es sólo la herramienta (código, caché HTTP, state.json). El
+producto final —los archivos Markdown de `constitucion/`, `codigos/` y
+`normas/<tipo>/`, y su historia de commits— vive en el repositorio vecino
+`DATA_REPO_ROOT`, para poder publicar y compartir la historia legal de forma
+independiente del código que la genera.
 """
 
 from __future__ import annotations

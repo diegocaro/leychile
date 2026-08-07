@@ -1,4 +1,4 @@
-# leyes-chile
+# leychile
 
 El **pipeline** que construye la historia git de la legislación chilena (la
 Constitución y los 15 Códigos oficiales), a partir exclusivamente de los datos
@@ -7,8 +7,9 @@ transcripción manual: todo el texto sale de los servicios de la Biblioteca del
 Congreso Nacional.
 
 Este repositorio contiene **sólo la herramienta**. El producto final —los
-`leyes/*.md` y la historia de commits que *es* su historia de modificaciones—
-se escribe en un repositorio vecino, `../leychile-texto/` (constante
+`constitucion/`, `codigos/` y `normas/<tipo>/` en Markdown, y la historia de
+commits que *es* su historia de modificaciones— se escribe en un repositorio
+vecino, `../leychile-texto/` (constante
 `DATA_REPO_ROOT` en `build_repo.py`), que debe existir y ser un repositorio git
 antes de ejecutar el pipeline. En *este* repositorio nunca vas a encontrar el
 texto de las leyes ni sus commits.
@@ -114,10 +115,10 @@ como a quien la firmó:
 - **Firmantes de la promulgación** (`src/leychile/promulgacion.py`),
   extraídos del propio texto de la norma: toda norma termina con un bloque de
   firmas con el Presidente (o, en las normas de 1973-1990, la Junta de
-  Gobierno) y un ministro. Por ejemplo, el cierre real del Código Aeronáutico:
-  `AUGUSTO PINOCHET UGARTE, Capitán General, Presidente de la República.- Hugo
-  Rosende Subiabre, Ministro de Justicia`. A diferencia del endpoint anterior,
-  este dato casi siempre está.
+  Gobierno) y uno o más ministros. Por ejemplo, el cierre real de la Ley
+  20.380 (sobre protección de animales): `MICHELLE BACHELET JERIA, Presidenta
+  de la República.- Álvaro Erazo Latorre, Ministro de Salud`. A diferencia del
+  endpoint anterior, este dato casi siempre está.
 
 El autor principal del commit es el primer parlamentario autor si existe; si
 no, el firmante principal de la promulgación; y si tampoco, el organismo
