@@ -52,7 +52,7 @@ PRESIDENT_ROLE_RE = re.compile(r"president[ae] de la rep[uú]blica", re.IGNORECA
 JUNTA_ROLE_RE = re.compile(r"junta de gobierno", re.IGNORECASE)
 MINISTER_ROLE_RE = re.compile(r"\bministr[oa]\b", re.IGNORECASE)
 SUBSECRETARIO_ROLE_RE = re.compile(r"subsecretari[oa]", re.IGNORECASE)
-TRANSCRIBER_MARKER_RE = re.compile(r"lo que transcribo", re.IGNORECASE)
+TRANSCRIBER_MARKER_RE = re.compile(r"lo que transcrib[oe]", re.IGNORECASE)
 ROLE_MAX_LEN = 100
 
 # Respaldo para detectar el bloque de promulgación cuando no trae ninguna de las
