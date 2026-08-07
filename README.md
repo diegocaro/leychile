@@ -8,7 +8,7 @@ Congreso Nacional.
 
 Este repositorio contiene **sólo la herramienta**. El producto final —los
 `leyes/*.md` y la historia de commits que *es* su historia de modificaciones—
-se escribe en un repositorio vecino, `../leychile/` (constante
+se escribe en un repositorio vecino, `../leychile-texto-texto/` (constante
 `DATA_REPO_ROOT` en `build_repo.py`), que debe existir y ser un repositorio git
 antes de ejecutar el pipeline. En *este* repositorio nunca vas a encontrar el
 texto de las leyes ni sus commits.
@@ -28,7 +28,7 @@ vigencia real, la ley que la modificó y quienes la firmaron. Así,
   para siempre por URL. Reejecutar el pipeline nunca vuelve a pedir una URL ya
   descargada.
 - `state.json` (ignorado por git): punto de control para reanudar. Registra qué
-  pares `(idNorma, fecha de versión)` ya se commitearon **en `../leychile/`**.
+  pares `(idNorma, fecha de versión)` ya se commitearon **en `../leychile-texto-texto/`**.
 
 ## Cómo ejecutarlo
 
@@ -38,12 +38,12 @@ Las dependencias se manejan con [uv](https://docs.astral.sh/uv/):
 uv sync                       # crea el entorno e instala dependencias
 
 # el repositorio de datos debe existir antes de construir nada
-mkdir -p ../leychile && git -C ../leychile init
+mkdir -p ../leychile-texto && git -C ../leychile-texto init
 
 # (re)genera config/targets.yaml desde el catálogo oficial de BCN
 uv run python -m leyeschile.discover
 
-# construye o continúa la historia de commits en ../leychile
+# construye o continúa la historia de commits en ../leychile-texto
 # se puede detener y relanzar cuando sea
 uv run python -m leyeschile.build_repo
 ```

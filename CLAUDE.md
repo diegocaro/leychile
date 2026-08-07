@@ -56,7 +56,7 @@ Constitución y los 15 Códigos oficiales) a partir de los datos públicos de
 LeyChile (BCN), sin LLMs ni transcripción manual.
 
 Este repositorio es **sólo la herramienta**. La salida se escribe en un
-repositorio vecino, `../leychile` (`DATA_REPO_ROOT` en `build_repo.py`), que
+repositorio vecino, `../leychile-texto` (`DATA_REPO_ROOT` en `build_repo.py`), que
 debe existir y ser un repositorio git (`git init`) antes de ejecutar el
 pipeline. Nunca busques el texto de las normas ni sus commits en *este*
 repositorio.
@@ -87,7 +87,7 @@ uv sync                                    # crea el entorno e instala dependenc
 # (re)genera config/targets.yaml desde el catálogo oficial de BCN
 uv run python -m leyeschile.discover
 
-# construye o continúa la historia de commits en ../leychile
+# construye o continúa la historia de commits en ../leychile-texto
 # es reanudable: se puede cortar (Ctrl-C / kill) y relanzar
 uv run python -m leyeschile.build_repo
 
@@ -147,7 +147,7 @@ descarga de versiones históricas).
    descargar nada, sólo se re-parsea).
 
 **Reanudabilidad**: `state.json` (ignorado por git, en la raíz) registra qué
-eventos `"<id_norma>:<vigente_desde>"` ya están commiteados en `../leychile`.
+eventos `"<id_norma>:<vigente_desde>"` ya están commiteados en `../leychile-texto`.
 `build_repo.main()` los salta y reintenta los que fallaron en corridas
 anteriores. El fallo de un evento nunca aborta la corrida completa (ver el
 try/except alrededor de `commit_event` en `main()`).

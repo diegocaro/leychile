@@ -54,7 +54,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 TARGETS_FILE = REPO_ROOT / "config" / "targets.yaml"
 STATE_FILE = REPO_ROOT / "state.json"
 
-DATA_REPO_ROOT = REPO_ROOT.parent / "leychile"
+DATA_REPO_ROOT = REPO_ROOT.parent / "leychile-texto"
 
 # El repositorio de datos se organiza en tres carpetas, según qué es cada cosa:
 #
