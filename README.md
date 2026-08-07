@@ -6,13 +6,7 @@ públicos de [LeyChile (BCN)](https://www.leychile.cl). Sin LLMs y sin
 transcripción manual: todo el texto sale de los servicios de la Biblioteca del
 Congreso Nacional.
 
-Este repositorio contiene **sólo la herramienta**. El producto final —los
-`constitucion/`, `codigos/` y `normas/<tipo>/` en Markdown, y la historia de
-commits que *es* su historia de modificaciones— se escribe en un repositorio
-vecino, [`leychile-texto`](https://github.com/diegocaro/leychile-texto)
-(constante `DATA_REPO_ROOT` en `build_repo.py`, en local `../leychile-texto/`),
-que debe existir y ser un repositorio git antes de ejecutar el pipeline. En
-*este* repositorio nunca vas a encontrar el texto de las leyes ni sus commits.
+## ➡️ El texto está en [`leychile-texto`](https://github.com/diegocaro/leychile-texto)
 
 La idea: cada commit es una modificación real a una norma, con su fecha de
 vigencia real, la ley que la modificó y quienes la firmaron. Así,
@@ -20,6 +14,9 @@ vigencia real, la ley que la modificó y quienes la firmaron. Así,
 `git diff` entre dos commits muestra exactamente qué cambió en el texto.
 
 ## Qué hay acá
+
+Este repositorio (`leychile`) contiene **sólo la herramienta**: el código del
+pipeline, nada de texto legal ni commits de leyes.
 
 - `src/leychile/`: el pipeline. Cada módulo tiene un docstring que explica
   qué endpoint de BCN usa y cómo se verificó su comportamiento.
@@ -32,6 +29,10 @@ vigencia real, la ley que la modificó y quienes la firmaron. Así,
   pares `(idNorma, fecha de versión)` ya se commitearon **en `../leychile-texto/`**.
 
 ## Cómo ejecutarlo
+
+Para ejecutar el pipeline, `leychile-texto` debe existir en local como
+repositorio git en `../leychile-texto` (constante `DATA_REPO_ROOT` en
+`build_repo.py`).
 
 Las dependencias se manejan con [uv](https://docs.astral.sh/uv/):
 
