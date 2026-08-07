@@ -6,9 +6,8 @@ públicos de [LeyChile (BCN)](https://www.leychile.cl). Sin LLMs y sin
 transcripción manual: todo el texto sale de los servicios de la Biblioteca del
 Congreso Nacional.
 
-## ➡️ El texto está en [`leychile-texto`](https://github.com/diegocaro/leychile-texto)
-
-La idea: cada commit es una modificación real a una norma, con su fecha de
+**El texto de las leyes está en [`leychile-texto`](https://github.com/diegocaro/leychile-texto).**
+Cada commit es una modificación real a una norma, con su fecha de
 vigencia real, la ley que la modificó y quienes la firmaron. Así,
 `git log` sobre un archivo es la historia legislativa de esa norma, y
 `git diff` entre dos commits muestra exactamente qué cambió en el texto.
