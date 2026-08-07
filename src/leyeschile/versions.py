@@ -41,7 +41,7 @@ causó ese cambio. Ver `VersionEvent.is_original` / `is_unknown_cause`.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 
 from .client import BcnClient
@@ -49,6 +49,19 @@ from .client import BcnClient
 GET_VERSIONES_URL_TEMPLATE = (
     "https://nuevo.leychile.cl/servicios/Consulta/get_versiones"
     "?idNorma={id_norma}&formato=json&idParte=&idsParte="
+)
+
+# Segunda fuente de causalidad, para las versiones que `get_versiones` deja sin
+# norma modificatoria. Es el mismo servicio que usa la web de BCN para pintar la
+# línea "Última modificación" de la ficha, y tiene datos que el otro endpoint no
+# trae: la versión 2025-07-01 del Código Tributario aparece sin causa en
+# `get_versiones`, pero acá —y en la ficha— figura la Ley 21.713.
+#
+# Devuelve JSON doblemente codificado (un string JSON que contiene el objeto), y
+# `{}` cuando BCN tampoco lo sabe, que es lo más común en normas antiguas.
+ULTIMA_MODIFICATORIA_URL_TEMPLATE = (
+    "https://nuevo.leychile.cl/servicios/Navegar/get_ultima_modificatoria"
+    "?idNorma={id_norma}&idVersion={fecha}&idParte="
 )
 
 # Valor centinela literal que usa BCN para "vigencia diferida por evento": una
@@ -141,6 +154,31 @@ _SPANISH_MONTHS = {
     "ENE": 1, "FEB": 2, "MAR": 3, "ABR": 4, "MAY": 5, "JUN": 6,
     "JUL": 7, "AGO": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DIC": 12,
 }
+
+# `get_ultima_modificatoria` entrega el tipo de norma en palabras ("Ley",
+# "Decreto Ley"), mientras que el resto del pipeline usa las siglas del catálogo
+# de BCN (ver tipos_norma.py). Este mapa traduce entre ambos.
+_SIGLAS_POR_NOMBRE = {
+    "ley": "LEY",
+    "decreto ley": "DL",
+    "decreto con fuerza de ley": "DFL",
+    "decreto": "DTO",
+    "auto acordado": "AA",
+    "sentencia": "SEN",
+    "rectificación": "REC",
+    "rectificacion": "REC",
+    "aviso": "AVI",
+}
+
+
+def _parse_fecha_opcional(valor: str | None) -> date | None:
+    """Como `_parse_bcn_date`, pero tolera ausencia o formato inesperado."""
+    if not valor:
+        return None
+    try:
+        return _parse_bcn_date(str(valor))
+    except (ValueError, KeyError):
+        return None
 
 
 def _parse_bcn_date(value: str) -> date:
@@ -241,3 +279,63 @@ def fetch_version_timeline(client: BcnClient, id_norma: int) -> list[VersionEven
             )
         )
     return events
+
+
+def _parse_ultima_modificatoria(texto: str, fecha: date) -> Modificatoria | None:
+    """Interpreta la respuesta de `get_ultima_modificatoria`.
+
+    Devuelve None cuando BCN no tiene el dato, que es lo que ocurre en la mayor
+    parte de las versiones antiguas: responde `{}`, o un mensaje explicando que
+    la vinculación no se muestra por ser anterior a su fecha límite.
+    """
+    try:
+        datos = json.loads(texto)
+        if isinstance(datos, str):
+            # Viene doblemente codificado, y a veces con una línea de mensaje
+            # antes del objeto.
+            datos = json.loads(datos.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return None
+    if not isinstance(datos, dict) or not datos.get("idNorma"):
+        return None
+    return Modificatoria(
+        id_norma=int(datos["idNorma"]),
+        nro_norma=str(datos.get("numero_norma") or "S/N"),
+        # Este endpoint entrega el tipo en palabras ("Ley"); el resto del
+        # pipeline usa la sigla del catálogo de BCN.
+        tipo_norma=_SIGLAS_POR_NOMBRE.get(str(datos.get("tipo_norma", "")).strip().lower(), "LEY"),
+        titulo=datos.get("titulo") or "",
+        organismo="",
+        fecha_publicacion=_parse_fecha_opcional(datos.get("fecha_publicacion_origen")),
+        inicio_vigencia=fecha,
+    )
+
+
+def completar_causas_faltantes(
+    client: BcnClient, id_norma: int, eventos: list[VersionEvent]
+) -> list[VersionEvent]:
+    """Rellena, con una segunda fuente, las versiones que quedaron sin causa.
+
+    `get_versiones` deja bastantes versiones sin norma modificatoria, pero BCN
+    sí conoce varias de ellas y las expone en `get_ultima_modificatoria` (es lo
+    que muestra la ficha web en "Última modificación"). Sólo se consulta para
+    los eventos sin causa, así que el costo es proporcional a los huecos y no
+    al total de versiones.
+    """
+    completados: list[VersionEvent] = []
+    for evento in eventos:
+        if not evento.is_unknown_cause:
+            completados.append(evento)
+            continue
+        url = ULTIMA_MODIFICATORIA_URL_TEMPLATE.format(
+            id_norma=id_norma, fecha=evento.vigente_desde.isoformat()
+        )
+        try:
+            mod = _parse_ultima_modificatoria(client.get(url).text(), evento.vigente_desde)
+        except Exception:  # noqa: BLE001 - es un complemento; nunca debe frenar el build
+            mod = None
+        if mod is None:
+            completados.append(evento)
+        else:
+            completados.append(replace(evento, modificatorias=(mod,)))
+    return completados

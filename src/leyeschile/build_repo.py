@@ -43,7 +43,12 @@ from .norma_json import NormaDocument, parse_norma_json
 from .render import render_markdown, render_markdown_norma
 from .signers import Author, autores_sin_registro, resolve_authors
 from .tipos_norma import TipoNorma, describir, fetch_catalogo, verbo_para
-from .versions import Modificatoria, VersionEvent, fetch_version_timeline
+from .versions import (
+    Modificatoria,
+    VersionEvent,
+    completar_causas_faltantes,
+    fetch_version_timeline,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 TARGETS_FILE = REPO_ROOT / "config" / "targets.yaml"
@@ -236,6 +241,7 @@ def build_commit_message(
     catalogo: dict[str, TipoNorma],
     ruta_documento: Path,
     rutas_normas: dict[int, Path] | None = None,
+    titulos_normas: dict[int, str] | None = None,
     inicio_de_eslabon: LineageLink | None = None,
 ) -> str:
     """Mensaje del commit: qué cambió, cuándo rigió y de qué URL de BCN salió.
@@ -261,9 +267,21 @@ def build_commit_message(
     (`git log --grep=LEY-21522`) sin abrir el cuerpo del commit.
     """
     rutas_normas = rutas_normas or {}
+    titulos_normas = titulos_normas or {}
     # Los títulos de BCN traen saltos de línea incrustados; el asunto del commit
     # tiene que ser una sola línea.
     titulo_norma = " ".join((titulo_norma or "").split())
+
+    def _titulo_de(m: Modificatoria) -> str:
+        """Título de la norma modificatoria.
+
+        `get_ultima_modificatoria` —la segunda fuente de causalidad— devuelve el
+        campo `titulo` vacío, así que en las causas recuperadas por esa vía se
+        usa el título del propio documento de la norma, que ya descargamos al
+        guardarla. Sin esto, el asunto repetiría el título del código afectado.
+        """
+        propio = " ".join((m.titulo or "").split())
+        return propio or " ".join((titulos_normas.get(m.id_norma) or "").split())
 
     def _describe(m: Modificatoria) -> str:
         """Nombre legible de la norma: "Ley 18750", "Auto Acordado 21".
@@ -321,7 +339,7 @@ def build_commit_message(
         identificador = _nombre_archivo(principal)
         if len(ordenadas) > 1:
             identificador = f"{identificador} +{len(ordenadas) - 1}"
-        titulo = " ".join((principal.titulo or "").split()) or titulo_norma
+        titulo = _titulo_de(principal) or titulo_norma
 
     header = f"[{identificador}] {version.vigente_desde.isoformat()}: {titulo}"
 
@@ -342,8 +360,8 @@ def build_commit_message(
             f"{_describe(m)} {verbo_para(m.tipo_norma)} el documento "
             f"— {m.organismo or 'organismo no registrado'}"
         )
-        if m.titulo:
-            lines.append(f"  {' '.join(m.titulo.split())}")
+        if _titulo_de(m):
+            lines.append(f"  {_titulo_de(m)}")
         ruta = rutas_normas.get(m.id_norma)
         if ruta is not None:
             lines.append(f"  Texto en este repo: {ruta}")
@@ -494,6 +512,7 @@ def commit_event(
     # Guardar el texto de cada norma modificatoria junto al documento afectado.
     rutas_normas: dict[int, Path] = {}
     docs_normas: dict[int, NormaDocument] = {}
+    titulos_normas: dict[int, str] = {}
     for mod in version.modificatorias:
         ruta, doc_norma = _guardar_norma(client, mod, catalogo)
         if ruta is not None:
@@ -501,6 +520,7 @@ def commit_event(
             archivos.append(DATA_REPO_ROOT / ruta)
         if doc_norma is not None:
             docs_normas[mod.id_norma] = doc_norma
+            titulos_normas[mod.id_norma] = doc_norma.titulo_norma
 
     organismo = doc.organismos[0] if doc.organismos else "Congreso Nacional de Chile"
     if version.is_original:
@@ -533,6 +553,7 @@ def commit_event(
         catalogo=catalogo,
         ruta_documento=target.path.relative_to(DATA_REPO_ROOT),
         rutas_normas=rutas_normas,
+        titulos_normas=titulos_normas,
         inicio_de_eslabon=inicio_de_eslabon,
     )
 
@@ -626,10 +647,27 @@ def main() -> None:
     # Primero se arma la línea de tiempo completa de todas las normas, y recién
     # después se commitea: el orden cronológico es global, así que no se puede
     # ir commiteando norma por norma a medida que se descargan.
+    # Esta fase puede tardar bastante y no produce commits todavía, así que
+    # informa su avance: en silencio parece que el proceso se colgó.
     all_events: list[CommitEvent] = []
-    for target in targets:
+    for i, target in enumerate(targets, start=1):
         for link in target.links:
             timeline = fetch_version_timeline(client, link.id_norma)
+            faltantes = sum(1 for v in timeline if v.is_unknown_cause)
+            print(
+                f"[{i}/{len(targets)}] {target.slug}: {len(timeline)} versiones"
+                + (f", consultando {faltantes} sin causa..." if faltantes else ""),
+                file=sys.stderr,
+                flush=True,
+            )
+            # `get_versiones` deja versiones sin norma causante, pero BCN conoce
+            # varias de ellas en otro servicio (ver
+            # versions.completar_causas_faltantes). Sólo se consulta para los
+            # huecos, así que el costo es proporcional a lo que falta.
+            timeline = completar_causas_faltantes(client, link.id_norma, timeline)
+            recuperadas = faltantes - sum(1 for v in timeline if v.is_unknown_cause)
+            if recuperadas:
+                print(f"    recuperadas {recuperadas} de {faltantes}", file=sys.stderr, flush=True)
             for version in timeline:
                 all_events.append(CommitEvent(target=target, link=link, version=version))
 

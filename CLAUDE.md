@@ -18,12 +18,23 @@ Cómo comprobar, de más barato a más caro:
 1. Consultar el endpoint directamente y mirar la respuesta cruda.
 2. Contrastar con otra fuente de BCN: `get_versiones`, `getTiposNorma`,
    `metadatos` de `get_norma_json`.
-3. **Abrir la ficha de la norma en el sitio web**, que es la fuente de verdad
-   visible y muestra fechas, versiones y estructura:
-   `https://www.bcn.cl/leychile/navegar?idNorma=<id>`
+3. **Abrir la ficha de la norma en el sitio web de BCN con el navegador
+   Chrome** (herramientas `mcp__claude-in-chrome__*`), en
+   `https://www.bcn.cl/leychile/navegar?idNorma=<id>` y, si se investiga una
+   versión concreta, agregando `&idVersion=<AAAA-MM-DD>`.
+
+   El sitio es la fuente de verdad visible: muestra fechas, versiones,
+   estructura y la norma modificatoria de cada versión. **Ante cualquier duda
+   sobre los datos, abrir Chrome y mirar la ficha**, no seguir deduciendo.
 
 Si algo no se pudo comprobar, decirlo explícitamente ("no verificado") en vez
 de presentarlo como hecho.
+
+**Un endpoint que no trae un dato no significa que BCN no lo tenga.** La web
+usa varios servicios distintos; inspeccionar sus peticiones de red (o
+simplemente leer la ficha) revela cuál tiene lo que falta. Así se descubrió
+que `get_ultima_modificatoria` sí atribuye versiones que `get_versiones` deja
+sin causa.
 
 Esta regla existe porque deducir sin comprobar ya produjo errores reales:
 
