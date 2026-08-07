@@ -3,6 +3,7 @@ name = "leychile"
 version = "0.1.0"
 description = "Construye la historia git de la legislación chilena a partir de los servicios públicos de LeyChile (BCN)"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.11"
 dependencies = [
     "requests>=2.31",

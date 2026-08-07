@@ -135,3 +135,9 @@ No existe un correo público real para legisladores y autoridades históricas, a
 que se usa una dirección claramente sintética
 (`...@sourced-from-bcn.leychile.invalid`): el objetivo es la atribución y la
 auditoría, no tener un buzón que funcione.
+
+## Sobre este proyecto
+
+Este es un proyecto de investigación, sin fines de lucro, que accede a los
+servicios de Ley Chile – Biblioteca del Congreso Nacional de forma respetuosa
+(ver el tiempo de espera entre peticiones y el cacheo descritos más arriba).
