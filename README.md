@@ -9,10 +9,10 @@ Congreso Nacional.
 Este repositorio contiene **sólo la herramienta**. El producto final —los
 `constitucion/`, `codigos/` y `normas/<tipo>/` en Markdown, y la historia de
 commits que *es* su historia de modificaciones— se escribe en un repositorio
-vecino, `../leychile-texto/` (constante
-`DATA_REPO_ROOT` en `build_repo.py`), que debe existir y ser un repositorio git
-antes de ejecutar el pipeline. En *este* repositorio nunca vas a encontrar el
-texto de las leyes ni sus commits.
+vecino, [`leychile-texto`](https://github.com/diegocaro/leychile-texto)
+(constante `DATA_REPO_ROOT` en `build_repo.py`, en local `../leychile-texto/`),
+que debe existir y ser un repositorio git antes de ejecutar el pipeline. En
+*este* repositorio nunca vas a encontrar el texto de las leyes ni sus commits.
 
 La idea: cada commit es una modificación real a una norma, con su fecha de
 vigencia real, la ley que la modificó y quienes la firmaron. Así,
@@ -79,32 +79,6 @@ El mensaje de cada commit también nombra la norma modificatoria y repite la URL
 fuente de ese snapshot, así que cualquier commit se puede verificar de forma
 independiente volviendo a consultar la API de BCN.
 
-## De dónde salen los datos
-
-La API pública *documentada* de BCN
-(`leychile.cl/esquemas/accesoLeyesChilenas4.pdf`) resultó no servir para esto:
-su parámetro `fechaVersion`, que en teoría entrega una versión histórica, es
-ignorado silenciosamente y siempre devuelve el texto vigente. Se comprobó
-pidiendo tres fechas distintas —incluida una anterior a cualquier
-modificación— y recibiendo respuestas byte a byte idénticas.
-
-El pipeline usa, en cambio, los servicios JSON internos de la propia aplicación
-web de LeyChile. No están documentados públicamente, pero son públicos y del
-mismo origen; se descubrieron abriendo leychile.cl en un navegador real e
-inspeccionando sus peticiones de red:
-
-| Para qué | Endpoint |
-|---|---|
-| Línea de tiempo de modificaciones de una norma | `nuevo.leychile.cl/servicios/Consulta/get_versiones?idNorma=<id>` |
-| Texto tal como regía en una fecha | `nuevo.leychile.cl/servicios/Navegar/get_norma_json?idNorma=<id>&idVersion=<fecha>` |
-| Parlamentarios autores (si los hay) | `nuevo.leychile.cl/servicios/Navegar/get_autores_de_la_ley?idNorma=<id>` |
-| Catálogo oficial de los 15 Códigos | `nuevo.leychile.cl/servicios/Consulta/getCodigos` |
-
-`get_norma_json` se verificó al revés que el endpoint documentado: tres fechas
-distintas devolvieron tres snapshots genuinamente diferentes y de tamaño
-creciente (38,8 KB → 41,7 KB → 41,8 KB), coincidiendo con el historial de
-modificaciones conocido. Es decir, el parámetro sí se respeta.
-
 ## Autoría de los commits
 
 Se combinan dos fuentes reales, para acreditar tanto a quien escribió la norma
@@ -117,8 +91,8 @@ como a quien la firmó:
   firmas con el Presidente (o, en las normas de 1973-1990, la Junta de
   Gobierno) y uno o más ministros. Por ejemplo, el cierre real de la Ley
   20.380 (sobre protección de animales): `MICHELLE BACHELET JERIA, Presidenta
-  de la República.- Álvaro Erazo Latorre, Ministro de Salud`. A diferencia del
-  endpoint anterior, este dato casi siempre está.
+  de la República.- Álvaro Erazo Latorre, Ministro de Salud`. A diferencia de
+  los parlamentarios autores, este dato casi siempre está.
 
 El autor principal del commit es el primer parlamentario autor si existe; si
 no, el firmante principal de la promulgación; y si tampoco, el organismo
