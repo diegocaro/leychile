@@ -591,10 +591,10 @@ def generar_indice(targets: list[Target], catalogo: dict[str, TipoNorma]) -> str
 
     consti = [t for t in targets if t.categoria == "constitucion" and t.path.exists()]
     if consti:
-        lineas.append("### Constitución")
-        lineas.append("")
+        lineas += ["### Constitución", "", "| Documento | Versiones en el repo |", "|---|---|"]
         for t in consti:
-            lineas.append(f"- [{t.slug}]({t.path.relative_to(DATA_REPO_ROOT)})")
+            rel = t.path.relative_to(DATA_REPO_ROOT)
+            lineas.append(f"| [{t.slug}]({rel}) | ver `git log -- {rel}` |")
         lineas.append("")
 
     codigos = sorted(
