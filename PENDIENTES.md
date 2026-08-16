@@ -31,7 +31,7 @@ cómo cambió *esa ley* en el tiempo.
   **4.300 peticiones nuevas**. Con el retardo de 6 segundos que impone el rate
   limit de BCN, eso son **~7 horas** de descarga en el mejor caso, sin contar
   los reintentos por 429.
-- El repositorio crecería de forma parecida: hoy son ~1.100 commits; esto
+- El repositorio crecería de forma parecida: hoy son ~980 commits; esto
   agregaría varios miles.
 
 **Cómo implementarlo cuando se decida.** La infraestructura ya está casi toda:
@@ -58,49 +58,7 @@ verdad, y recién ahí decidir si se extiende a las 714.
 
 ---
 
-## 2. Un commit por norma, en vez de uno por documento afectado
-
-**Qué es.** Hoy cada commit modifica **un** documento: si una ley reforma ocho
-códigos el mismo día, se generan ocho commits con el mismo asunto, uno por
-código. La alternativa es un commit por acto legislativo, tocando todos los
-archivos que esa norma modificó.
-
-**El caso que lo motivó.** La Ley 20.720 de 2014 (insolvencia y
-reemprendimiento) sustituyó el régimen concursal y modificó ocho códigos el
-2014-10-10. Así se vería ese commit único, sumando lo que hoy está repartido:
-
-    codigos/codigo-civil.md                       +25     -24
-    codigos/codigo-de-comercio.md                 +512    -1277
-    codigos/codigo-de-mineria.md                  +4      -4
-    codigos/codigo-de-procedimiento-civil.md      +10     -7
-    codigos/codigo-del-trabajo.md                 +25     -7
-    codigos/codigo-organico-de-tribunales.md      +7      -7
-    codigos/codigo-penal.md                       +39     -11
-    codigos/codigo-tributario.md                  +5      -5
-    normas/ley/LEY-20720.md                       +2346   -2
-
-Se lee como una unidad y deja ver el alcance real de la reforma: el golpe fuerte
-fue al Código de Comercio —1.277 líneas eliminadas, el Libro IV de Quiebras que
-la ley derogó— mientras que a Minería apenas le tocó cuatro líneas.
-
-**A favor.** El `git log` pasa a reflejar actos legislativos en vez de repetir
-ocho veces el mismo título, y el alcance de cada reforma queda visible de un
-vistazo.
-
-**En contra.** Hoy cada documento tiene una historia aislada: `git show` de
-cualquier commit del Código Penal muestra sólo el Código Penal. Con commits
-compartidos, `git log -- codigos/codigo-penal.md` seguiría funcionando (git
-filtra por ruta), pero cada `git show` mezclaría ocho documentos distintos.
-
-**La dificultad técnica.** El orden cronológico global se arma hoy por evento
-`(documento, versión)`. Agrupar exige juntar por `(norma, fecha)`, y **no todos
-los casos son limpios**: una misma ley puede empezar a regir sobre distintos
-códigos en fechas distintas, así que no siempre agruparía todo. Habría que
-decidir qué hacer con esos casos parciales antes de implementarlo.
-
----
-
-## 3. Cargo real de los autores parlamentarios
+## 2. Cargo real de los autores parlamentarios
 
 Los commits ya traen una sección "Participantes" con el rol de cada persona. Los
 firmantes tienen su cargo textual, extraído de la promulgación ("Presidente de
@@ -123,7 +81,7 @@ Con eso, en vez de "Iván Moreira Barros — autor de la moción" se podría lee
 
 ---
 
-## 4. Linaje para los códigos
+## 3. Linaje para los códigos
 
 La Constitución ya tiene linaje (cuatro cuerpos encadenados en un solo archivo,
 ver `discover.CONSTITUCION_LINAJE`). Varios códigos tienen la misma estructura y
@@ -141,7 +99,7 @@ investigación, no de programación, y algunos casos van a ser ambiguos.
 
 ---
 
-## 5. Huecos en la cobertura de la Constitución
+## 4. Huecos en la cobertura de la Constitución
 
 BCN no tiene texto versionado para todo el período constitucional. Quedan dos
 huecos conocidos, que no son fallas del pipeline sino de la fuente:

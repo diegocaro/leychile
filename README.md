@@ -7,10 +7,11 @@ transcripción manual: todo el texto sale de los servicios de la Biblioteca del
 Congreso Nacional.
 
 **El texto de las leyes está en [`leychile-texto`](https://github.com/diegocaro/leychile-texto).**
-Cada commit es una modificación real a una norma, con su fecha de
-vigencia real, la ley que la modificó y quienes la firmaron. Así,
-`git log` sobre un archivo es la historia legislativa de esa norma, y
-`git diff` entre dos commits muestra exactamente qué cambió en el texto.
+Cada commit es un acto legislativo real —con su fecha de vigencia, la ley que lo
+produjo y quienes la firmaron—, y toca todos los documentos que esa ley modificó
+ese día. Así, `git log` sobre un archivo es la historia legislativa de esa
+norma, y `git diff` entre dos commits muestra exactamente qué cambió en el
+texto.
 
 ## Qué hay acá
 
@@ -25,7 +26,8 @@ pipeline, nada de texto legal ni commits de leyes.
   para siempre por URL. Reejecutar el pipeline nunca vuelve a pedir una URL ya
   descargada.
 - `state.json` (ignorado por git): punto de control para reanudar. Registra qué
-  pares `(idNorma, fecha de versión)` ya se commitearon **en `../leychile-texto/`**.
+  actos legislativos —`(fecha de vigencia, normas modificatorias)`— ya se
+  commitearon **en `../leychile-texto/`**.
 
 ## Cómo ejecutarlo
 

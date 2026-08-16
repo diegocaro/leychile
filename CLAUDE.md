@@ -136,7 +136,17 @@ descarga de versiones históricas).
 6. `build_repo.py`: el orquestador. Mezcla las líneas de tiempo de todas las
    normas en **una sola lista global ordenada por fecha** (así la historia git
    queda como una cronología real entrelazada entre documentos, no agrupada
-   norma por norma) y crea un commit por evento en `DATA_REPO_ROOT`.
+   norma por norma) y va creando los commits en `DATA_REPO_ROOT`.
+
+   **Un commit es un acto legislativo, no un documento afectado**
+   (`agrupar_eventos`): si una ley reformó ocho códigos el mismo día, eso es un
+   commit que toca los ocho archivos. Se agrupa por *(fecha de vigencia,
+   conjunto exacto de normas modificatorias)*, y el conjunto tiene que ser
+   exacto para que se cumpla la invariante que hace legible el commit: cada
+   norma citada modificó cada documento del commit. Lo que no se agrupa: las
+   publicaciones originales, las versiones sin causa registrada, y una misma
+   norma que rige sobre distintos documentos en fechas distintas (un commit por
+   fecha, en su lugar de la cronología).
 7. `client.py`: la capa HTTP por la que pasa todo lo anterior. Cachea cada
    respuesta en disco para siempre indexada por URL (`cache/`, ignorado por
    git), con backoff que respeta `Retry-After` ante 429/5xx. **Nunca hagas
@@ -147,10 +157,11 @@ descarga de versiones históricas).
    descargar nada, sólo se re-parsea).
 
 **Reanudabilidad**: `state.json` (ignorado por git, en la raíz) registra qué
-eventos `"<id_norma>:<vigente_desde>"` ya están commiteados en `../leychile-texto`.
+commits ya están hechos en `../leychile-texto`, con las claves de
+`CommitGroup.key` (`"<fecha>:mods:<ids>"` o `"<fecha>:doc:<id_norma>"`).
 `build_repo.main()` los salta y reintenta los que fallaron en corridas
-anteriores. El fallo de un evento nunca aborta la corrida completa (ver el
-try/except alrededor de `commit_event` en `main()`).
+anteriores. El fallo de un commit nunca aborta la corrida completa (ver el
+try/except alrededor de `commit_group` en `main()`).
 
 ## Trampas no obvias de los datos de BCN
 
