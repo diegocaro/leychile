@@ -97,6 +97,12 @@ código por código, cuál es la cadena real de normas antecesoras en BCN —igu
 que se hizo para la Constitución— y agregarla a `targets.yaml`. El trabajo es de
 investigación, no de programación, y algunos casos van a ser ambiguos.
 
+**Esa investigación está hecha para los casos principales: ver `ISSUES.md` §A.**
+Resumen: el Código Civil y el Código del Trabajo anteriores a su texto refundido
+no son recuperables (BCN sólo publica el primero desde 2000 y el segundo en
+PDF), y el Código de Aguas de 1948 sí lo es, con texto completo bajo la Ley
+8.944 (`idNorma=125715`).
+
 ---
 
 ## 4. Huecos en la cobertura de la Constitución
